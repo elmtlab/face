@@ -5,7 +5,7 @@ set -euo pipefail
 # One-command installer
 
 INSTALL_DIR="${FACE_INSTALL_DIR:-$HOME/.face}"
-REPO_URL="https://github.com/anthropics/face.git"
+REPO_URL="https://github.com/elmtlab/face.git"
 PORT="${FACE_PORT:-3456}"
 
 RED='\033[0;31m'
@@ -33,6 +33,7 @@ info "Checking dependencies..."
 check_dep node   "https://nodejs.org"
 check_dep npm    "https://nodejs.org"
 check_dep git    "https://git-scm.com"
+check_dep curl   "https://curl.se (used for health checks)"
 
 NODE_VERSION=$(node -v | sed 's/v//' | cut -d. -f1)
 if [ "$NODE_VERSION" -lt 18 ]; then
@@ -54,7 +55,8 @@ else
   SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
   if [ -f "$SCRIPT_DIR/package.json" ] && grep -q '"face-scaffold"' "$SCRIPT_DIR/package.json" 2>/dev/null; then
     info "Installing from local source..."
-    cp -r "$SCRIPT_DIR" "$INSTALL_DIR/app"
+    mkdir -p "$INSTALL_DIR/app"
+    rsync -a --exclude node_modules --exclude .next --exclude .git --exclude '.claude' --exclude 'data/*.db' "$SCRIPT_DIR/" "$INSTALL_DIR/app/"
   else
     info "Cloning repository..."
     git clone "$REPO_URL" "$INSTALL_DIR/app"
@@ -64,10 +66,16 @@ else
 fi
 
 info "Installing npm dependencies..."
-npm install --no-fund --no-audit 2>&1 | tail -1
+if ! npm install --no-fund --no-audit; then
+  err "npm install failed"
+  exit 1
+fi
 
 info "Building application..."
-npm run build 2>&1 | tail -3
+if ! npm run build; then
+  err "Build failed"
+  exit 1
+fi
 
 # --- Create data directory ---
 mkdir -p "$INSTALL_DIR/app/data"
@@ -104,6 +112,7 @@ usage() {
   echo "  logs        Tail the server logs"
   echo "  dev         Start in development mode (foreground)"
   echo "  open        Open FACE in the browser"
+  echo "  uninstall   Remove FACE installation"
   echo ""
   echo "Environment variables:"
   echo "  FACE_PORT           Server port (default: 3456)"
@@ -131,8 +140,11 @@ cmd_start() {
   fi
 
   cd "$APP_DIR"
+  # Truncate log on fresh start
+  : > "$LOG_FILE"
   echo -e "${BLUE}[face]${NC} Starting FACE server on port $PORT..."
-  PORT="$PORT" nohup npm run start -- -p "$PORT" > "$LOG_FILE" 2>&1 &
+  # Use node directly to avoid npm wrapper PID mismatch
+  nohup node node_modules/.bin/next start -p "$PORT" > "$LOG_FILE" 2>&1 &
   local pid=$!
   echo "$pid" > "$PID_FILE"
 
@@ -162,7 +174,8 @@ cmd_stop() {
   pid=$(cat "$PID_FILE")
   echo -e "${BLUE}[face]${NC} Stopping server (PID $pid)..."
 
-  kill "$pid" 2>/dev/null || true
+  # Kill the process group to catch child processes
+  kill -- -"$pid" 2>/dev/null || kill "$pid" 2>/dev/null || true
 
   # Wait for graceful shutdown
   local attempts=0
@@ -177,7 +190,7 @@ cmd_stop() {
   done
 
   # Force kill
-  kill -9 "$pid" 2>/dev/null || true
+  kill -9 -- -"$pid" 2>/dev/null || kill -9 "$pid" 2>/dev/null || true
   rm -f "$PID_FILE"
   echo -e "${GREEN}[face]${NC} Server stopped (forced)"
 }
@@ -207,7 +220,25 @@ cmd_logs() {
 cmd_dev() {
   cd "$APP_DIR"
   echo -e "${BLUE}[face]${NC} Starting dev server on port $PORT..."
-  PORT="$PORT" exec npm run dev -- -p "$PORT"
+  exec node node_modules/.bin/next dev -p "$PORT"
+}
+
+cmd_uninstall() {
+  # Stop server if running
+  if is_running; then
+    cmd_stop
+  fi
+
+  echo -e "${YELLOW}[face]${NC} This will remove $FACE_HOME"
+  read -rp "Are you sure? [y/N] " confirm
+  if [[ ! "$confirm" =~ ^[yY]$ ]]; then
+    echo -e "${BLUE}[face]${NC} Cancelled"
+    return 0
+  fi
+
+  rm -rf "$FACE_HOME"
+  echo -e "${GREEN}[face]${NC} Removed $FACE_HOME"
+  echo -e "${YELLOW}[face]${NC} You may want to remove the PATH entry from your shell profile"
 }
 
 cmd_open() {
@@ -228,7 +259,8 @@ case "${1:-}" in
   status)  cmd_status ;;
   logs)    cmd_logs ;;
   dev)     cmd_dev ;;
-  open)    cmd_open ;;
+  open)      cmd_open ;;
+  uninstall) cmd_uninstall ;;
   -h|--help|help) usage ;;
   *)
     if [ -n "${1:-}" ]; then
