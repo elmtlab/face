@@ -49,7 +49,7 @@ case "\${1:-start}" in
     fi
     mkdir -p "\$FACE_DIR"
     cd "\$FACE_ROOT"
-    nohup npx next start --port "\$PORT" > "\$LOG_FILE" 2>&1 &
+    nohup npx next start --port "\$PORT" >> "\$LOG_FILE" 2>&1 &
     echo \$! > "\$PID_FILE"
     echo "FACE started in background (PID \$!)."
     echo "http://localhost:\$PORT"
@@ -63,7 +63,7 @@ case "\${1:-start}" in
     fi
     mkdir -p "\$FACE_DIR"
     cd "\$FACE_ROOT"
-    nohup npx next dev --port "\$PORT" > "\$LOG_FILE" 2>&1 &
+    nohup npx next dev --port "\$PORT" >> "\$LOG_FILE" 2>&1 &
     echo \$! > "\$PID_FILE"
     echo "FACE started in dev mode (PID \$!)."
     echo "http://localhost:\$PORT"
@@ -72,7 +72,7 @@ case "\${1:-start}" in
   stop)
     if _is_running; then
       pid=\$(cat "\$PID_FILE")
-      kill "\$pid" 2>/dev/null
+      pkill -P "\$pid" 2>/dev/null; kill "\$pid" 2>/dev/null
       rm -f "\$PID_FILE"
       echo "FACE stopped (PID \$pid)."
     else
