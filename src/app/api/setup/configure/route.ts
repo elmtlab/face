@@ -2,7 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { setupClaudeCode } from "@/lib/agents/setup";
 
 export async function POST(request: NextRequest) {
-  const body = await request.json();
+  let body: Record<string, unknown>;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  }
+
   const agentId = body.agentId;
 
   if (agentId === "claude-code") {

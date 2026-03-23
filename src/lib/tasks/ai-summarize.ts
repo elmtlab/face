@@ -33,7 +33,16 @@ export function summarizePrompt(prompt: string): Promise<string> {
       ["-p", instruction, "--output-format", "text"],
       {
         timeout: 15_000,
-        env: { ...process.env, FACE_INTERNAL: "1" },
+        env: {
+          PATH: process.env.PATH,
+          HOME: process.env.HOME,
+          USER: process.env.USER,
+          SHELL: process.env.SHELL,
+          LANG: process.env.LANG,
+          TERM: process.env.TERM,
+          NODE_ENV: process.env.NODE_ENV,
+          FACE_INTERNAL: "1",
+        } as NodeJS.ProcessEnv,
       },
       (err, stdout) => {
         if (err || !stdout?.trim()) {
