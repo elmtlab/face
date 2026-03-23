@@ -1,0 +1,61 @@
+import { NextRequest, NextResponse } from "next/server";
+import { getDb } from "@/lib/db";
+import { usageEvents, layoutWeights } from "@/lib/db/schema";
+import { recordFeatureUsage } from "@/lib/user/adaptive";
+import { getUserProfile } from "@/lib/user/profile";
+
+export async function POST(request: NextRequest) {
+  const body = await request.json();
+  const events = body.events as Array<{
+    eventType: string;
+    componentId: string;
+    section: string;
+    durationMs?: number;
+    metadata?: Record<string, unknown>;
+  }>;
+
+  if (!Array.isArray(events) || events.length === 0) {
+    return NextResponse.json({ error: "No events provided" }, { status: 400 });
+  }
+
+  const db = getDb();
+  const now = Date.now();
+  const profile = getUserProfile();
+  const role = profile?.role ?? "other";
+
+  for (const event of events) {
+    db.insert(usageEvents).values({
+      timestamp: now,
+      eventType: event.eventType,
+      componentId: event.componentId,
+      section: event.section,
+      durationMs: event.durationMs ?? null,
+      metadata: event.metadata ? JSON.stringify(event.metadata) : null,
+    }).run();
+
+    // Update feature usage stats for adaptive UI
+    if (event.eventType === "click" || event.eventType === "expand") {
+      recordFeatureUsage(event.componentId, role);
+    }
+  }
+
+  return NextResponse.json({ recorded: events.length });
+}
+
+export async function GET() {
+  const db = getDb();
+  const weights = db.select().from(layoutWeights).all();
+
+  const result: Record<
+    string,
+    { weight: number; interactionCount: number }
+  > = {};
+  for (const w of weights) {
+    result[w.componentId] = {
+      weight: w.weight,
+      interactionCount: w.interactionCount,
+    };
+  }
+
+  return NextResponse.json({ weights: result });
+}
