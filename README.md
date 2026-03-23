@@ -1,45 +1,36 @@
 # face
 
-`face` is an exploration repo for a new GUI for AI agents.
+`face` is an adaptive GUI for AI agents.
 
 The working reference point is tools like Claude Code: fast, agent-driven, terminal-native in spirit, but with a stronger visual interface for context, actions, history, and state.
 
-## Purpose
+## Quick Start
 
-This repo exists to explore what a good interface for an AI agent should feel like when the agent is doing real work:
+```bash
+npm install
+npm run dev
+```
 
-- reading and editing code
-- running commands
-- tracking progress
-- surfacing plans and decisions
-- keeping important context visible without overwhelming the user
+Open [http://localhost:3456](http://localhost:3456). On first launch, FACE detects installed AI agents (Claude Code, Codex) and configures hooks to track task progress.
 
-## Initial Direction
+## How It Works
 
-We are not starting from a fixed product spec. The first goal is to find the right shape of the product by building and testing concrete interaction patterns.
+- **Agent detection**: Auto-detects locally installed AI CLIs on startup
+- **Hook integration**: Configures Claude Code hooks (`UserPromptSubmit`, `PostToolUse`, `Stop`) to report task status
+- **Task tracking**: Stores task state in `~/.face/tasks/` as JSON files
+- **AI summaries**: Uses the local agent to generate concise task titles from user prompts
+- **Adaptive UI**: Layout adjusts based on user role and usage patterns
 
-Questions this repo should help answer:
+## Architecture
 
-- What deserves a GUI, and what should stay terminal-like?
-- How should an agent show progress, reasoning, and confidence?
-- How should file changes, commands, and approvals be presented?
-- How can the interface stay fast while supporting long-running agent workflows?
+- Next.js 16 (App Router) + TypeScript + Tailwind CSS 4
+- SQLite (better-sqlite3 + Drizzle ORM) for usage tracking
+- `~/.face/tasks/*.json` for task state
+- Agent plugin system via `AgentAdapter` interface
 
 ## Principles
 
 - Agent-first, not chatbot-first
+- Outcome-focused: show what the user gets, not what tools ran
 - Fast to use during real work
-- Clear state and clear control
-- Good defaults for both technical and non-technical users
 - Designed through prototypes, not abstract debate
-
-## Near-Term Plan
-
-1. Define the core interaction model.
-2. Sketch a few strong interface directions.
-3. Build a thin prototype to test the flow end to end.
-4. Iterate based on real usage instead of static mockups alone.
-
-## Status
-
-Early exploration. The repo currently contains the initial project framing only.
