@@ -10,7 +10,7 @@ The working reference point is tools like Claude Code: fast, agent-driven, termi
 ./install.sh
 ```
 
-This installs dependencies, builds the app, and adds a `face` command to your PATH.
+This installs dependencies, builds the app, and adds a `face` command to `~/.local/bin`. Override the install location with `BIN_DIR=/your/path ./install.sh`.
 
 ## Usage
 
