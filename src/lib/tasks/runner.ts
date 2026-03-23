@@ -83,26 +83,34 @@ function spawnClaudeCode(task: FaceTask, binaryPath: string): void {
     "json",
   ];
 
+  // Allowlist env vars — don't leak secrets to child processes
   const child = spawn(binaryPath, args, {
     cwd: task.workingDirectory,
     env: {
-      ...process.env,
+      PATH: process.env.PATH,
+      HOME: process.env.HOME,
+      USER: process.env.USER,
+      SHELL: process.env.SHELL,
+      LANG: process.env.LANG,
+      TERM: process.env.TERM,
+      NODE_ENV: process.env.NODE_ENV,
       FACE_TASK_ID: task.id,
-    },
+    } as NodeJS.ProcessEnv,
     stdio: ["ignore", "pipe", "pipe"],
   });
 
   runningTasks.set(task.id, child);
 
+  const MAX_OUTPUT = 2 * 1024 * 1024; // 2MB cap
   let stdout = "";
   let stderr = "";
 
   child.stdout?.on("data", (data: Buffer) => {
-    stdout += data.toString();
+    if (stdout.length < MAX_OUTPUT) stdout += data.toString();
   });
 
   child.stderr?.on("data", (data: Buffer) => {
-    stderr += data.toString();
+    if (stderr.length < MAX_OUTPUT) stderr += data.toString();
   });
 
   child.on("close", (code) => {

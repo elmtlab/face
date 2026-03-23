@@ -5,13 +5,29 @@ import { summarizePrompt } from "@/lib/tasks/ai-summarize";
 import { eventBus } from "@/lib/events/bus";
 import type { FaceTask, FaceTaskStep } from "@/lib/tasks/types";
 
+const SAFE_ID_RE = /^[a-zA-Z0-9_-]+$/;
+const VALID_HOOK_TYPES = new Set([
+  "UserPromptSubmit",
+  "PostToolUse",
+  "Stop",
+  "unknown",
+]);
+
+function sanitizeId(raw: unknown): string | undefined {
+  if (typeof raw !== "string") return undefined;
+  const trimmed = raw.trim().slice(0, 128);
+  return SAFE_ID_RE.test(trimmed) ? trimmed : undefined;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
 
-    const sessionId = body.session_id ?? body.sessionId;
-    const hookType = body.hook_type ?? body.hookType ?? "unknown";
-    const taskIdFromEnv = body.env?.FACE_TASK_ID;
+    const sessionId = sanitizeId(body.session_id ?? body.sessionId);
+    const hookType = VALID_HOOK_TYPES.has(body.hook_type ?? body.hookType)
+      ? (body.hook_type ?? body.hookType)
+      : "unknown";
+    const taskIdFromEnv = sanitizeId(body.env?.FACE_TASK_ID);
 
     // --- Find or create task ---
     let task: FaceTask | null = null;

@@ -37,6 +37,8 @@ export function summarizePrompt(prompt: string): Promise<string> {
       },
       (err, stdout) => {
         if (err || !stdout?.trim()) {
+          const reason = err?.killed ? "timeout" : err?.message ?? "no output";
+          console.warn(`[face] AI summarization failed (${reason}), using fallback`);
           resolve(fallbackTitle(prompt));
           return;
         }
@@ -56,7 +58,10 @@ export function summarizePrompt(prompt: string): Promise<string> {
     );
 
     // Don't let a hung process block forever
-    child.on("error", () => resolve(fallbackTitle(prompt)));
+    child.on("error", (err) => {
+      console.warn(`[face] AI summarization process error: ${err.message}`);
+      resolve(fallbackTitle(prompt));
+    });
   });
 }
 

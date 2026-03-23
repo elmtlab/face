@@ -1,4 +1,5 @@
-import { execSync } from "child_process";
+import { execFileSync } from "child_process";
+import { isClaudeCodeConfigured } from "./setup";
 import type { AgentDetection, FaceConfig } from "../tasks/types";
 import { readConfig, writeConfig, ensureFaceDir } from "../tasks/file-manager";
 
@@ -14,19 +15,19 @@ const KNOWN_AGENTS: AgentDef[] = [
     id: "claude-code",
     binary: "claude",
     versionFlag: "--version",
-    configCheck: checkClaudeCodeConfigured,
+    configCheck: () => isClaudeCodeConfigured(),
   },
   {
     id: "codex",
     binary: "codex",
     versionFlag: "--version",
-    configCheck: () => false, // TODO: implement codex config check
+    configCheck: () => false,
   },
 ];
 
 function findBinary(name: string): string | null {
   try {
-    const result = execSync(`which ${name}`, {
+    const result = execFileSync("which", [name], {
       encoding: "utf-8",
       timeout: 5000,
     }).trim();
@@ -38,22 +39,13 @@ function findBinary(name: string): string | null {
 
 function getVersion(binary: string, flag: string): string | undefined {
   try {
-    const result = execSync(`"${binary}" ${flag}`, {
+    const result = execFileSync(binary, [flag], {
       encoding: "utf-8",
       timeout: 10000,
     }).trim();
     return result;
   } catch {
     return undefined;
-  }
-}
-
-function checkClaudeCodeConfigured(): boolean {
-  try {
-    const { isClaudeCodeConfigured } = require("../agents/setup");
-    return isClaudeCodeConfigured();
-  } catch {
-    return false;
   }
 }
 

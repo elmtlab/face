@@ -1,12 +1,11 @@
 export type {
-  AgentStatus,
-  TaskStatus,
-  AgentInfo,
-  TaskStep,
-  AgentTask,
-  AgentEvent,
-  AgentAdapter,
-} from "@/lib/agents/types";
+  FaceTask,
+  FaceTaskStep,
+  FaceTaskActivity,
+  FaceTaskStatus,
+  FaceConfig,
+  AgentDetection,
+} from "@/lib/tasks/types";
 
 export interface LayoutWeight {
   componentId: string;
@@ -16,15 +15,10 @@ export interface LayoutWeight {
 }
 
 export interface HealthStatus {
-  status: "ok" | "degraded" | "error";
-  agents: Record<string, { healthy: boolean; message?: string }>;
+  status: "ok" | "degraded" | "setup_required";
+  agents: Record<
+    string,
+    { installed: boolean; configured: boolean; healthy: boolean }
+  >;
   db: boolean;
-}
-
-export interface TrackingEvent {
-  eventType: "click" | "view" | "expand" | "collapse";
-  componentId: string;
-  section: string;
-  durationMs?: number;
-  metadata?: Record<string, unknown>;
 }
