@@ -1,45 +1,36 @@
-# face
+This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
-`face` is an exploration repo for a new GUI for AI agents.
+## Getting Started
 
-The working reference point is tools like Claude Code: fast, agent-driven, terminal-native in spirit, but with a stronger visual interface for context, actions, history, and state.
+First, run the development server:
 
-## Purpose
+```bash
+npm run dev
+# or
+yarn dev
+# or
+pnpm dev
+# or
+bun dev
+```
 
-This repo exists to explore what a good interface for an AI agent should feel like when the agent is doing real work:
+Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
-- reading and editing code
-- running commands
-- tracking progress
-- surfacing plans and decisions
-- keeping important context visible without overwhelming the user
+You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
-## Initial Direction
+This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
-We are not starting from a fixed product spec. The first goal is to find the right shape of the product by building and testing concrete interaction patterns.
+## Learn More
 
-Questions this repo should help answer:
+To learn more about Next.js, take a look at the following resources:
 
-- What deserves a GUI, and what should stay terminal-like?
-- How should an agent show progress, reasoning, and confidence?
-- How should file changes, commands, and approvals be presented?
-- How can the interface stay fast while supporting long-running agent workflows?
+- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
+- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
 
-## Principles
+You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
 
-- Agent-first, not chatbot-first
-- Fast to use during real work
-- Clear state and clear control
-- Good defaults for both technical and non-technical users
-- Designed through prototypes, not abstract debate
+## Deploy on Vercel
 
-## Near-Term Plan
+The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
-1. Define the core interaction model.
-2. Sketch a few strong interface directions.
-3. Build a thin prototype to test the flow end to end.
-4. Iterate based on real usage instead of static mockups alone.
-
-## Status
-
-Early exploration. The repo currently contains the initial project framing only.
+Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
