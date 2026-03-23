@@ -15,9 +15,11 @@ This installs dependencies, builds the app, and adds a `face` command to `~/.loc
 ## Usage
 
 ```bash
-face          # Start the dashboard (http://localhost:3456)
-face dev      # Start in development mode
+face          # Start the dashboard in background (http://localhost:3456)
+face dev      # Start in dev mode (background)
 face stop     # Stop the running server
+face status   # Check if FACE is running
+face logs     # Tail the server logs
 ```
 
 On first launch, FACE detects installed AI agents (Claude Code, Codex) and configures hooks to track task progress.
