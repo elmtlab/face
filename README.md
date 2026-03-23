@@ -4,14 +4,23 @@
 
 The working reference point is tools like Claude Code: fast, agent-driven, terminal-native in spirit, but with a stronger visual interface for context, actions, history, and state.
 
-## Quick Start
+## Install
 
 ```bash
-npm install
-npm run dev
+./install.sh
 ```
 
-Open [http://localhost:3456](http://localhost:3456). On first launch, FACE detects installed AI agents (Claude Code, Codex) and configures hooks to track task progress.
+This installs dependencies, builds the app, and adds a `face` command to your PATH.
+
+## Usage
+
+```bash
+face          # Start the dashboard (http://localhost:3456)
+face dev      # Start in development mode
+face stop     # Stop the running server
+```
+
+On first launch, FACE detects installed AI agents (Claude Code, Codex) and configures hooks to track task progress.
 
 ## How It Works
 
