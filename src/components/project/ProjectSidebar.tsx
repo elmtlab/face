@@ -11,9 +11,9 @@ interface Props {
 }
 
 const NAV_ITEMS: { key: ViewMode; label: string; icon: string }[] = [
+  { key: "workflow", label: "New Requirement", icon: "✦" },
   { key: "board", label: "Board", icon: "▦" },
   { key: "list", label: "Issues", icon: "☰" },
-  { key: "workflow", label: "New Requirement", icon: "✦" },
   { key: "settings", label: "Settings", icon: "⚙" },
 ];
 
