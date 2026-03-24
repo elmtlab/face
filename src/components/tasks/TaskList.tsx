@@ -29,6 +29,16 @@ export function TaskList() {
   const filtered =
     filter === "all" ? tasks : tasks.filter((t) => t.status === filter);
 
+  async function handleDelete(taskId: string) {
+    try {
+      await fetch(`/api/tasks/${taskId}`, { method: "DELETE" });
+      if (selectedId === taskId) setSelectedId(null);
+      loadTasks();
+    } catch (err) {
+      console.error("Failed to delete task:", err);
+    }
+  }
+
   const selectedTask = tasks.find((t) => t.id === selectedId) ?? null;
 
   return (
@@ -71,7 +81,8 @@ export function TaskList() {
                 key={task.id}
                 task={task}
                 selected={task.id === selectedId}
-                onSelect={setSelectedId}
+                onSelectAction={setSelectedId}
+                onDeleteAction={handleDelete}
               />
             ))
           )}
