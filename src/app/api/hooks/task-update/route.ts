@@ -171,17 +171,17 @@ function buildStepDescription(
 
   if (t === "edit" || t === "replace") {
     const file = input.file_path ?? input.filePath ?? "";
-    return `Edit ${shortenPath(String(file))}`;
+    return `Edit ${String(file)}`;
   }
 
   if (t === "write") {
     const file = input.file_path ?? input.filePath ?? "";
-    return `Create ${shortenPath(String(file))}`;
+    return `Create ${String(file)}`;
   }
 
   if (t === "read") {
     const file = input.file_path ?? input.filePath ?? "";
-    return `Read ${shortenPath(String(file))}`;
+    return `Read ${String(file)}`;
   }
 
   if (t === "bash") {

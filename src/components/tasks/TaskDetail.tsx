@@ -127,7 +127,7 @@ export function TaskDetail({ task }: { task: FaceTask }) {
                 >
                   <span className="text-zinc-700 w-5 text-right flex-shrink-0">{i + 1}</span>
                   <span className="text-zinc-500 flex-shrink-0 w-12 truncate">{step.tool}</span>
-                  <span className="truncate">{step.description}</span>
+                  <StepDescription step={step} workingDirectory={task.workingDirectory} />
                 </div>
               ))}
             </div>
@@ -267,4 +267,69 @@ function shortenPath(filePath: string): string {
   const parts = filePath.split("/");
   if (parts.length <= 2) return filePath;
   return parts.slice(-2).join("/");
+}
+
+/** Tools that create or modify files */
+const FILE_MUTATION_TOOLS = new Set(["Write", "Edit", "Create", "NotebookEdit"]);
+
+/** Tools that involve files (read or write) */
+const FILE_TOOLS = new Set([...FILE_MUTATION_TOOLS, "Read"]);
+
+/**
+ * Extract a file path from a step description.
+ * Returns both the original text matched and the resolved absolute path.
+ */
+function extractFilePath(
+  description: string,
+  tool: string,
+  workingDirectory: string
+): { original: string; absolute: string } | null {
+  if (!FILE_TOOLS.has(tool)) return null;
+
+  // Match absolute paths in the description
+  const absMatch = description.match(/(\/[\w./-]+\.\w+)/);
+  if (absMatch) return { original: absMatch[1], absolute: absMatch[1] };
+
+  // Match relative paths after tool-like prefixes: "Read src/foo.ts", "Create app/bar.tsx"
+  const relMatch = description.match(/(?:Read|Write|Edit|Create)\s+([\w./-]+\.\w+)/);
+  if (relMatch && workingDirectory) {
+    return { original: relMatch[1], absolute: `${workingDirectory}/${relMatch[1]}` };
+  }
+
+  return null;
+}
+
+function StepDescription({
+  step,
+  workingDirectory,
+}: {
+  step: { tool: string; description: string };
+  workingDirectory: string;
+}) {
+  const match = extractFilePath(step.description, step.tool, workingDirectory);
+  const isMutation = FILE_MUTATION_TOOLS.has(step.tool);
+
+  if (!match) {
+    return <span className="truncate">{step.description}</span>;
+  }
+
+  const parts = step.description.split(match.original);
+
+  return (
+    <span className="truncate">
+      {parts[0]}
+      <a
+        href={`vscode://file${match.absolute}`}
+        className={`underline decoration-dotted underline-offset-2 ${
+          isMutation
+            ? "text-amber-500 hover:text-amber-400"
+            : "text-zinc-500 hover:text-zinc-400"
+        } transition-colors`}
+        title={match.absolute}
+      >
+        {match.absolute}
+      </a>
+      {parts.slice(1).join(match.original)}
+    </span>
+  );
 }
