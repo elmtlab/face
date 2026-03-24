@@ -7,8 +7,9 @@ import { IssueListView } from "@/components/project/IssueListView";
 import { IssueDetailPanel } from "@/components/project/IssueDetailPanel";
 import { SettingsView } from "@/components/project/SettingsView";
 import { AgentPanel } from "@/components/project/AgentPanel";
+import { RequirementWorkflow } from "@/components/project/RequirementWorkflow";
 
-export type ViewMode = "board" | "list" | "settings";
+export type ViewMode = "board" | "list" | "workflow" | "settings";
 
 export default function ProjectPage() {
   const [view, setView] = useState<ViewMode>("board");
@@ -24,6 +25,7 @@ export default function ProjectPage() {
         activeView={view}
         onViewChange={setView}
         onRefresh={refresh}
+        refreshKey={refreshKey}
       />
 
       <main className="flex-1 flex overflow-hidden">
@@ -42,10 +44,16 @@ export default function ProjectPage() {
               onAssignAgent={setAgentIssueId}
             />
           )}
+          {view === "workflow" && (
+            <RequirementWorkflow
+              onClose={() => setView("board")}
+              onCreated={refresh}
+            />
+          )}
           {view === "settings" && <SettingsView />}
         </div>
 
-        {selectedIssueId && (
+        {view !== "workflow" && selectedIssueId && (
           <IssueDetailPanel
             issueId={selectedIssueId}
             onClose={() => setSelectedIssueId(null)}
@@ -54,7 +62,7 @@ export default function ProjectPage() {
           />
         )}
 
-        {agentIssueId && (
+        {view !== "workflow" && agentIssueId && (
           <AgentPanel
             issueId={agentIssueId}
             onClose={() => setAgentIssueId(null)}
