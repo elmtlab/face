@@ -204,13 +204,6 @@ function buildStepDescription(
   return `${tool}`;
 }
 
-function shortenPath(p: string): string {
-  if (!p) return "";
-  const parts = p.split("/");
-  if (parts.length <= 2) return p;
-  return parts.slice(-2).join("/");
-}
-
 /**
  * Distill a user prompt into a concise, actionable title.
  *
