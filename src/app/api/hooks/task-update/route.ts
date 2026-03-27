@@ -171,17 +171,17 @@ function buildStepDescription(
 
   if (t === "edit" || t === "replace") {
     const file = input.file_path ?? input.filePath ?? "";
-    return `Edit ${shortenPath(String(file))}`;
+    return `Edit ${String(file)}`;
   }
 
   if (t === "write") {
     const file = input.file_path ?? input.filePath ?? "";
-    return `Create ${shortenPath(String(file))}`;
+    return `Create ${String(file)}`;
   }
 
   if (t === "read") {
     const file = input.file_path ?? input.filePath ?? "";
-    return `Read ${shortenPath(String(file))}`;
+    return `Read ${String(file)}`;
   }
 
   if (t === "bash") {
@@ -202,13 +202,6 @@ function buildStepDescription(
     input.description ?? input.command ?? input.file_path ?? input.pattern;
   if (desc) return String(desc).slice(0, 120);
   return `${tool}`;
-}
-
-function shortenPath(p: string): string {
-  if (!p) return "";
-  const parts = p.split("/");
-  if (parts.length <= 2) return p;
-  return parts.slice(-2).join("/");
 }
 
 /**

@@ -47,6 +47,7 @@ const PHASES: { key: Phase; label: string }[] = [
   { key: "done", label: "Done" },
 ];
 
+
 const PHASE_CONFIG: Record<Phase, { label: string; color: string; icon: string }> = {
   gathering: { label: "Gathering", color: "bg-blue-600/20 text-blue-400 border-blue-600/30", icon: "?" },
   planning: { label: "Planning", color: "bg-purple-600/20 text-purple-400 border-purple-600/30", icon: "~" },

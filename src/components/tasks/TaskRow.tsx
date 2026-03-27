@@ -26,9 +26,17 @@ export function TaskRow({
       : null;
 
   return (
-    <button
+    <div
+      role="button"
+      tabIndex={0}
       onClick={() => onSelectAction(task.id)}
-      className={`w-full text-left rounded-lg border p-3 transition-all ${
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onSelectAction(task.id);
+        }
+      }}
+      className={`w-full text-left rounded-lg border p-3 transition-all cursor-pointer ${
         selected
           ? "border-blue-700 bg-blue-950/30 shadow-lg shadow-blue-900/10"
           : "border-zinc-800 bg-zinc-900 hover:border-zinc-700 hover:bg-zinc-900/80"
@@ -41,18 +49,27 @@ export function TaskRow({
         </span>
         <div className="flex items-center gap-1.5 flex-shrink-0 mt-0.5">
           <StatusBadge status={task.status} />
-          <button
+          <div
+            role="button"
+            tabIndex={0}
             onClick={(e) => {
               e.stopPropagation();
               onDeleteAction(task.id);
             }}
-            className="rounded p-0.5 text-zinc-600 hover:text-red-400 hover:bg-zinc-800 transition-colors"
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                e.stopPropagation();
+                onDeleteAction(task.id);
+              }
+            }}
+            className="rounded p-0.5 text-zinc-600 hover:text-red-400 hover:bg-zinc-800 transition-colors cursor-pointer"
             title={isRunning ? "Stop and delete" : "Delete"}
           >
             <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M18 6L6 18M6 6l12 12" />
             </svg>
-          </button>
+          </div>
         </div>
       </div>
 
@@ -79,6 +96,6 @@ export function TaskRow({
           <div className="h-full rounded-full bg-blue-500 transition-all animate-pulse" style={{ width: "60%" }} />
         </div>
       )}
-    </button>
+    </div>
   );
 }
