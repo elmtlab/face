@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getActiveProvider } from "@/lib/project/manager";
+import { eventBus } from "@/lib/events/bus";
 
 export async function GET(req: Request) {
   const provider = await getActiveProvider();
@@ -27,5 +28,6 @@ export async function POST(req: Request) {
 
   const body = await req.json();
   const issue = await provider.createIssue(body);
+  eventBus.emit("issue_created", { issue });
   return NextResponse.json({ issue });
 }

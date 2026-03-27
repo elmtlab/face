@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { Issue, IssueStatus } from "@/lib/project/types";
+import { useProjectEvents } from "@/lib/project/use-project-events";
 
 interface ColumnData {
   id: string;
@@ -37,6 +38,8 @@ export function BoardView({ onSelectIssue, onAssignAgent }: Props) {
   const [columns, setColumns] = useState<ColumnData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [draggingIssueId, setDraggingIssueId] = useState<string | null>(null);
+  const [dropTargetColumn, setDropTargetColumn] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchBoard = () => {
@@ -57,6 +60,78 @@ export function BoardView({ onSelectIssue, onAssignAgent }: Props) {
     const interval = setInterval(fetchBoard, 30_000);
     return () => clearInterval(interval);
   }, []);
+
+  useProjectEvents(() => {
+    // Re-fetch board data on any issue event
+    fetch("/api/project/board")
+      .then((r) => r.json())
+      .then((data) => {
+        if (!data.error) setColumns(data.project.columns);
+      });
+  }, ["issue_created", "issue_updated"]);
+
+  const handleDragOver = (e: React.DragEvent, columnId: string) => {
+    e.preventDefault();
+    setDropTargetColumn(columnId);
+  };
+
+  const handleDragLeave = (e: React.DragEvent, columnId: string) => {
+    // Only clear if leaving the column itself, not entering a child
+    const relatedTarget = e.relatedTarget as HTMLElement | null;
+    const currentTarget = e.currentTarget as HTMLElement;
+    if (!relatedTarget || !currentTarget.contains(relatedTarget)) {
+      setDropTargetColumn((prev) => (prev === columnId ? null : prev));
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent, targetColumn: ColumnData) => {
+    e.preventDefault();
+    setDropTargetColumn(null);
+    setDraggingIssueId(null);
+
+    const issueId = e.dataTransfer.getData("text/plain");
+    if (!issueId) return;
+
+    // Find the source column and issue
+    const sourceColumn = columns.find((col) =>
+      col.issues.some((issue) => issue.id === issueId)
+    );
+    if (!sourceColumn || sourceColumn.id === targetColumn.id) return;
+
+    const issue = sourceColumn.issues.find((i) => i.id === issueId);
+    if (!issue) return;
+
+    // Optimistic update
+    const previousColumns = columns;
+    setColumns((prev) =>
+      prev.map((col) => {
+        if (col.id === sourceColumn.id) {
+          return { ...col, issues: col.issues.filter((i) => i.id !== issueId) };
+        }
+        if (col.id === targetColumn.id) {
+          return {
+            ...col,
+            issues: [...col.issues, { ...issue, status: targetColumn.status }],
+          };
+        }
+        return col;
+      })
+    );
+
+    // Persist via API
+    fetch(`/api/project/issues/${issueId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: targetColumn.status }),
+    })
+      .then((r) => {
+        if (!r.ok) throw new Error("Failed to update issue status");
+      })
+      .catch(() => {
+        // Revert on error
+        setColumns(previousColumns);
+      });
+  };
 
   if (loading) {
     return (
@@ -86,7 +161,14 @@ export function BoardView({ onSelectIssue, onAssignAgent }: Props) {
         {columns.map((col) => (
           <div
             key={col.id}
-            className="min-w-[280px] max-w-[320px] flex-shrink-0 bg-zinc-900 rounded-lg border border-zinc-800"
+            onDragOver={(e) => handleDragOver(e, col.id)}
+            onDragLeave={(e) => handleDragLeave(e, col.id)}
+            onDrop={(e) => handleDrop(e, col)}
+            className={`min-w-[280px] max-w-[320px] flex-shrink-0 bg-zinc-900 rounded-lg border transition-colors ${
+              dropTargetColumn === col.id
+                ? "border-indigo-500 bg-indigo-500/5"
+                : "border-zinc-800"
+            }`}
           >
             <div className="px-3 py-2.5 border-b border-zinc-800 flex items-center gap-2">
               <span className={`w-2 h-2 rounded-full ${STATUS_DOT[col.status] ?? "bg-zinc-500"}`} />
@@ -102,6 +184,16 @@ export function BoardView({ onSelectIssue, onAssignAgent }: Props) {
                   issue={issue}
                   onSelect={() => onSelectIssue(issue.id)}
                   onAssignAgent={() => onAssignAgent(issue.id)}
+                  isDragging={draggingIssueId === issue.id}
+                  onDragStart={(e) => {
+                    e.dataTransfer.setData("text/plain", issue.id);
+                    e.dataTransfer.effectAllowed = "move";
+                    setDraggingIssueId(issue.id);
+                  }}
+                  onDragEnd={() => {
+                    setDraggingIssueId(null);
+                    setDropTargetColumn(null);
+                  }}
                 />
               ))}
               {col.issues.length === 0 && (
@@ -119,15 +211,26 @@ function IssueCard({
   issue,
   onSelect,
   onAssignAgent,
+  isDragging,
+  onDragStart,
+  onDragEnd,
 }: {
   issue: Issue;
   onSelect: () => void;
   onAssignAgent: () => void;
+  isDragging: boolean;
+  onDragStart: (e: React.DragEvent) => void;
+  onDragEnd: () => void;
 }) {
   return (
     <div
+      draggable="true"
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
       onClick={onSelect}
-      className="p-3 bg-zinc-850 bg-zinc-800/50 rounded-md border border-zinc-700/50 hover:border-zinc-600 cursor-pointer transition-colors group"
+      className={`p-3 bg-zinc-850 bg-zinc-800/50 rounded-md border border-zinc-700/50 hover:border-zinc-600 cursor-pointer transition-colors group ${
+        isDragging ? "opacity-50" : ""
+      }`}
     >
       <div className="flex items-start justify-between gap-2">
         <span className="text-xs text-zinc-500 font-mono">#{issue.number}</span>

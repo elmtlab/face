@@ -96,16 +96,28 @@ export function RequirementWorkflow({ workflowId, onClose, onCreated }: Props) {
   const chatEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  // Load existing workflow or create new one
+  // Load existing workflow, or set up a local-only placeholder for new ones.
+  // New workflows are only persisted on the first message (see sendMessage).
   useEffect(() => {
     if (workflowId) {
       fetch(`/api/project/workflow/${workflowId}`)
         .then((r) => r.json())
         .then((d) => setWorkflow(d.workflow));
     } else {
-      fetch("/api/project/workflow", { method: "POST" })
-        .then((r) => r.json())
-        .then((d) => setWorkflow(d.workflow));
+      // Local-only placeholder — not persisted until the user sends a message
+      setWorkflow({
+        id: "",
+        phase: "gathering",
+        messages: [],
+        generatedStory: null,
+        issueId: null,
+        issueUrl: null,
+        pmApproval: "pending",
+        engApproval: "pending",
+        taskId: null,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
     }
   }, [workflowId]);
 
@@ -121,7 +133,7 @@ export function RequirementWorkflow({ workflowId, onClose, onCreated }: Props) {
 
   // Persist workflow "done" state to disk and update local state
   const markDone = useCallback(async () => {
-    if (!workflow) return;
+    if (!workflow || !workflow.id) return;
     setWorkflow((w) =>
       w ? { ...w, phase: "done", updatedAt: new Date().toISOString() } : null
     );
@@ -156,7 +168,18 @@ export function RequirementWorkflow({ workflowId, onClose, onCreated }: Props) {
     );
 
     try {
-      const res = await fetch(`/api/project/workflow/${workflow.id}/chat`, {
+      let wfId = workflow.id;
+
+      // If this is a brand-new workflow (not yet persisted), create it first
+      if (!wfId) {
+        const createRes = await fetch("/api/project/workflow", { method: "POST" });
+        const createData = await createRes.json();
+        if (!createData.workflow?.id) throw new Error("Failed to create workflow");
+        wfId = createData.workflow.id;
+        setWorkflow((w) => (w ? { ...w, id: wfId } : null));
+      }
+
+      const res = await fetch(`/api/project/workflow/${wfId}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: messageText }),
@@ -172,7 +195,7 @@ export function RequirementWorkflow({ workflowId, onClose, onCreated }: Props) {
   };
 
   const doAction = async (action: string, extra?: Record<string, string>) => {
-    if (!workflow || loading) return;
+    if (!workflow || !workflow.id || loading) return;
     setLoading(true);
     setError(null);
     try {

@@ -16,6 +16,8 @@ const NAV_ITEMS: { key: ViewMode; label: string; icon: string }[] = [
   { key: "requirements", label: "Requirements", icon: "◉" },
   { key: "board", label: "Board", icon: "▦" },
   { key: "list", label: "Issues", icon: "☰" },
+  { key: "milestones", label: "Milestones", icon: "◎" },
+  { key: "triage", label: "Triage", icon: "◆" },
   { key: "settings", label: "Settings", icon: "⚙" },
 ];
 
