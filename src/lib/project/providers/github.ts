@@ -17,8 +17,22 @@ import type {
 
 // ── Helpers ────────────────────────────────────────────────────────
 
-function mapGitHubState(state: string, stateReason?: string | null): IssueStatus {
+function mapGitHubState(
+  state: string,
+  stateReason?: string | null,
+  hasLinkedPR?: boolean,
+  labels?: Array<{ name: string }>,
+): IssueStatus {
   if (state === "closed") return stateReason === "not_planned" ? "cancelled" : "done";
+
+  // Check labels for explicit status hints
+  const labelNames = (labels ?? []).map((l) => l.name.toLowerCase());
+  if (labelNames.some((n) => n === "in review" || n === "in-review" || n === "review")) return "in_review";
+  if (labelNames.some((n) => n === "in progress" || n === "in-progress" || n === "wip")) return "in_progress";
+
+  // Issues with a linked PR are at least in progress
+  if (hasLinkedPR) return "in_progress";
+
   return "todo";
 }
 
@@ -42,13 +56,13 @@ function mapUser(u: { login: string; id: number; avatar_url: string }): User {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function mapIssue(raw: any): Issue {
+function mapIssue(raw: any, hasLinkedPR = false): Issue {
   return {
     id: String(raw.number),
     number: raw.number,
     title: raw.title,
     body: raw.body ?? "",
-    status: mapGitHubState(raw.state, raw.state_reason),
+    status: mapGitHubState(raw.state, raw.state_reason, hasLinkedPR, raw.labels),
     priority: mapPriority(raw.labels ?? []),
     labels: (raw.labels ?? []).map((l: { id: number; name: string; color: string }) => ({
       id: String(l.id),
@@ -177,8 +191,15 @@ export class GitHubProvider implements ProjectProvider {
     if (filter?.milestone) params.set("milestone", filter.milestone);
 
     const raw = await this.api(`/repos/${this.owner}/${this.repo}/issues?${params}`);
+
+    // Find which open issues have linked PRs via search API (single request)
+    const issuesWithPR = await this.getIssuesWithLinkedPRs();
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let issues: Issue[] = raw.filter((i: any) => !i.pull_request).map(mapIssue);
+    let issues: Issue[] = raw
+      .filter((i: any) => !i.pull_request)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .map((i: any) => mapIssue(i, issuesWithPR.has(i.number)));
 
     if (filter?.status?.length) {
       issues = issues.filter((i) => filter.status!.includes(i.status));
@@ -286,6 +307,24 @@ export class GitHubProvider implements ProjectProvider {
       openIssues: m.open_issues,
       closedIssues: m.closed_issues,
     }));
+  }
+
+  // ── Helpers ─────────────────────────────────────────────────────
+
+  /**
+   * Use GitHub search to find open issues that have a linked PR.
+   * Returns a Set of issue numbers.
+   */
+  private async getIssuesWithLinkedPRs(): Promise<Set<number>> {
+    try {
+      const q = encodeURIComponent(`repo:${this.owner}/${this.repo} is:issue is:open linked:pr`);
+      const data = await this.api(`/search/issues?q=${q}&per_page=100`);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return new Set((data.items ?? []).map((i: any) => i.number as number));
+    } catch {
+      // Search API may be rate-limited; degrade gracefully
+      return new Set();
+    }
   }
 
   async listMembers(): Promise<User[]> {
