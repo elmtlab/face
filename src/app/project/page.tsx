@@ -9,8 +9,9 @@ import { SettingsView } from "@/components/project/SettingsView";
 import { AgentPanel } from "@/components/project/AgentPanel";
 import { RequirementWorkflow } from "@/components/project/RequirementWorkflow";
 import { RequirementsView } from "@/components/project/RequirementsView";
+import { TriageView } from "@/components/project/TriageView";
 
-export type ViewMode = "board" | "list" | "workflow" | "requirements" | "settings";
+export type ViewMode = "board" | "list" | "workflow" | "requirements" | "triage" | "settings";
 
 export default function ProjectPage() {
   const [view, setView] = useState<ViewMode>("board");
@@ -72,6 +73,7 @@ export default function ProjectPage() {
               }}
             />
           )}
+          {view === "triage" && <TriageView />}
           {view === "settings" && <SettingsView />}
         </div>
 

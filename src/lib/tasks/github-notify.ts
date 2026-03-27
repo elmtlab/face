@@ -26,6 +26,16 @@ export async function postCompletionComment(task: FaceTask): Promise<void> {
     console.log(
       `[face] Posted completion comment on issue #${task.linkedIssue} for task ${task.id}`
     );
+
+    // Update issue status when task completed successfully
+    if (task.status === "completed") {
+      try {
+        await provider.updateIssue(String(task.linkedIssue), { status: "in_review" });
+        console.log(`[face] Updated issue #${task.linkedIssue} status to in_review`);
+      } catch (err) {
+        console.error(`[face] Failed to update issue #${task.linkedIssue} status:`, err);
+      }
+    }
   } catch (err) {
     console.error(
       `[face] Failed to post GitHub comment on issue #${task.linkedIssue} for task ${task.id}:`,
@@ -58,6 +68,9 @@ function buildCommentBody(task: FaceTask): string {
   if (task.title) {
     lines.push(`**Task:** ${task.title}`);
   }
+
+  lines.push("");
+  lines.push(`[View full task details in FACE](http://localhost:3000/project?task=${task.id})`);
 
   if (task.summary) {
     lines.push("");
