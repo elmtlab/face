@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getActiveProvider } from "@/lib/project/manager";
+import { eventBus } from "@/lib/events/bus";
 
 export async function GET(
   _req: Request,
@@ -30,5 +31,6 @@ export async function PATCH(
   const { issueId } = await params;
   const body = await req.json();
   const issue = await provider.updateIssue(issueId, body);
+  eventBus.emit("issue_updated", { issue });
   return NextResponse.json({ issue });
 }

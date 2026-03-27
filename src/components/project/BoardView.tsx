@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { Issue, IssueStatus } from "@/lib/project/types";
+import { useProjectEvents } from "@/lib/project/use-project-events";
 
 interface ColumnData {
   id: string;
@@ -59,6 +60,15 @@ export function BoardView({ onSelectIssue, onAssignAgent }: Props) {
     const interval = setInterval(fetchBoard, 30_000);
     return () => clearInterval(interval);
   }, []);
+
+  useProjectEvents(() => {
+    // Re-fetch board data on any issue event
+    fetch("/api/project/board")
+      .then((r) => r.json())
+      .then((data) => {
+        if (!data.error) setColumns(data.project.columns);
+      });
+  }, ["issue_created", "issue_updated"]);
 
   const handleDragOver = (e: React.DragEvent, columnId: string) => {
     e.preventDefault();
