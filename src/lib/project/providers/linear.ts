@@ -17,7 +17,8 @@ import type {
 
 // ── Helpers ────────────────────────────────────────────────────────
 
-function mapLinearState(stateName: string): IssueStatus {
+// Used when mapping real Linear API responses (see TODO markers)
+export function mapLinearState(stateName: string): IssueStatus {
   const name = stateName.toLowerCase();
   if (name === "backlog") return "backlog";
   if (name === "todo") return "todo";
@@ -28,7 +29,7 @@ function mapLinearState(stateName: string): IssueStatus {
   return "todo";
 }
 
-function mapLinearPriority(priority: number): IssuePriority {
+export function mapLinearPriority(priority: number): IssuePriority {
   switch (priority) {
     case 0: return "none";
     case 1: return "urgent";
