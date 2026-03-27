@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { Issue } from "@/lib/project/types";
+import { TaskStatusPanel } from "./TaskStatusPanel";
 
 interface Props {
   issueId: string;
@@ -13,7 +14,7 @@ export function AgentPanel({ issueId, onClose }: Props) {
   const [prompt, setPrompt] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [taskId, setTaskId] = useState<string | null>(null);
-  const [taskStatus, setTaskStatus] = useState<string | null>(null);
+  const [taskDone, setTaskDone] = useState(false);
 
   useEffect(() => {
     fetch(`/api/project/issues/${issueId}`)
@@ -44,35 +45,14 @@ export function AgentPanel({ issueId, onClose }: Props) {
       const data = await res.json();
       if (data.task?.id) {
         setTaskId(data.task.id);
-        setTaskStatus(data.task.status);
       }
     } finally {
       setSubmitting(false);
     }
   };
 
-  // Poll task status
-  useEffect(() => {
-    if (!taskId) return;
-    const interval = setInterval(async () => {
-      try {
-        const res = await fetch(`/api/tasks/${taskId}`);
-        const data = await res.json();
-        if (data.task) {
-          setTaskStatus(data.task.status);
-          if (data.task.status === "completed" || data.task.status === "failed") {
-            clearInterval(interval);
-          }
-        }
-      } catch {
-        // ignore
-      }
-    }, 3000);
-    return () => clearInterval(interval);
-  }, [taskId]);
-
   return (
-    <div className="w-[380px] border-l border-zinc-800 bg-zinc-900 flex flex-col">
+    <div className="w-[420px] border-l border-zinc-800 bg-zinc-900 flex flex-col">
       <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
         <span className="text-sm font-medium text-zinc-300">AI Agent</span>
         <button onClick={onClose} className="text-zinc-500 hover:text-zinc-300 text-lg leading-none">
@@ -111,48 +91,26 @@ export function AgentPanel({ issueId, onClose }: Props) {
           </form>
         ) : (
           <div className="space-y-3">
-            <div className="bg-zinc-800/50 rounded-md p-3">
-              <div className="flex items-center gap-2 mb-2">
-                <span className="text-xs text-zinc-500">Task ID:</span>
-                <code className="text-xs text-zinc-300 font-mono">{taskId}</code>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-zinc-500">Status:</span>
-                <span
-                  className={`text-xs font-medium ${
-                    taskStatus === "completed"
-                      ? "text-emerald-400"
-                      : taskStatus === "failed"
-                        ? "text-red-400"
-                        : "text-amber-400"
-                  }`}
-                >
-                  {taskStatus ?? "unknown"}
-                </span>
-                {taskStatus === "running" && (
-                  <span className="animate-pulse text-amber-400 text-xs">...</span>
-                )}
-              </div>
-            </div>
+            <TaskStatusPanel
+              taskId={taskId}
+              onStatusChange={(status) => {
+                if (status === "completed" || status === "failed") {
+                  setTaskDone(true);
+                }
+              }}
+            />
 
-            {(taskStatus === "completed" || taskStatus === "failed") && (
+            {taskDone && (
               <button
                 onClick={() => {
                   setTaskId(null);
-                  setTaskStatus(null);
+                  setTaskDone(false);
                 }}
                 className="w-full px-4 py-2 text-sm rounded-md border border-zinc-700 text-zinc-300 hover:bg-zinc-800"
               >
                 Send Another Task
               </button>
             )}
-
-            <a
-              href="/"
-              className="block text-center text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
-            >
-              View in FACE Dashboard →
-            </a>
           </div>
         )}
       </div>
