@@ -82,11 +82,12 @@ function PhaseBar({ current }: { current: Phase }) {
 // ── Main component ─────────────────────────────────────────────────
 
 interface Props {
+  workflowId?: string | null; // if provided, load existing workflow
   onClose: () => void;
   onCreated: () => void; // refresh parent
 }
 
-export function RequirementWorkflow({ onClose, onCreated }: Props) {
+export function RequirementWorkflow({ workflowId, onClose, onCreated }: Props) {
   const [workflow, setWorkflow] = useState<WorkflowState | null>(null);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -94,12 +95,18 @@ export function RequirementWorkflow({ onClose, onCreated }: Props) {
   const chatEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  // Create workflow on mount
+  // Load existing workflow or create new one
   useEffect(() => {
-    fetch("/api/project/workflow", { method: "POST" })
-      .then((r) => r.json())
-      .then((d) => setWorkflow(d.workflow));
-  }, []);
+    if (workflowId) {
+      fetch(`/api/project/workflow/${workflowId}`)
+        .then((r) => r.json())
+        .then((d) => setWorkflow(d.workflow));
+    } else {
+      fetch("/api/project/workflow", { method: "POST" })
+        .then((r) => r.json())
+        .then((d) => setWorkflow(d.workflow));
+    }
+  }, [workflowId]);
 
   // Auto-scroll chat
   useEffect(() => {
@@ -134,18 +141,30 @@ export function RequirementWorkflow({ onClose, onCreated }: Props) {
 
   const sendMessage = async () => {
     if (!workflow || !input.trim() || loading) return;
+    const messageText = input.trim();
     setLoading(true);
     setError(null);
+    setInput("");
+
+    // Immediately show user message in chat
+    const userMessage: ChatMessage = {
+      role: "user",
+      content: messageText,
+      timestamp: new Date().toISOString(),
+    };
+    setWorkflow((w) =>
+      w ? { ...w, messages: [...w.messages, userMessage] } : null
+    );
+
     try {
       const res = await fetch(`/api/project/workflow/${workflow.id}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: input.trim() }),
+        body: JSON.stringify({ message: messageText }),
       });
       const data = await res.json();
       if (data.workflow) setWorkflow(data.workflow);
       if (data.error) setError(data.error);
-      setInput("");
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -199,6 +218,7 @@ export function RequirementWorkflow({ onClose, onCreated }: Props) {
           <ChatArea
             messages={workflow.messages}
             chatEndRef={chatEndRef}
+            loading={loading}
           />
         )}
 
@@ -295,9 +315,11 @@ export function RequirementWorkflow({ onClose, onCreated }: Props) {
 function ChatArea({
   messages,
   chatEndRef,
+  loading,
 }: {
   messages: ChatMessage[];
   chatEndRef: React.RefObject<HTMLDivElement | null>;
+  loading?: boolean;
 }) {
   return (
     <div className="p-4 space-y-4">
@@ -334,6 +356,24 @@ function ChatArea({
           </div>
         </div>
       ))}
+
+      {loading && (
+        <div className="flex justify-start">
+          <div className="max-w-[80%] rounded-lg px-4 py-2.5 text-sm bg-zinc-800 text-zinc-200 border border-zinc-700">
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-[10px] font-medium uppercase tracking-wider text-zinc-500">
+                AI Agent
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="w-1.5 h-1.5 rounded-full bg-zinc-400 animate-bounce [animation-delay:0ms]" />
+              <div className="w-1.5 h-1.5 rounded-full bg-zinc-400 animate-bounce [animation-delay:150ms]" />
+              <div className="w-1.5 h-1.5 rounded-full bg-zinc-400 animate-bounce [animation-delay:300ms]" />
+              <span className="text-xs text-zinc-500 ml-2">Thinking...</span>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div ref={chatEndRef} />
     </div>

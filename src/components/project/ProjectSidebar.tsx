@@ -6,18 +6,20 @@ import { WorkflowList } from "./WorkflowList";
 interface Props {
   activeView: ViewMode;
   onViewChange: (v: ViewMode) => void;
+  onSelectWorkflow: (id: string) => void;
   onRefresh: () => void;
   refreshKey: number;
 }
 
 const NAV_ITEMS: { key: ViewMode; label: string; icon: string }[] = [
   { key: "workflow", label: "New Requirement", icon: "✦" },
+  { key: "requirements", label: "Requirements", icon: "◉" },
   { key: "board", label: "Board", icon: "▦" },
   { key: "list", label: "Issues", icon: "☰" },
   { key: "settings", label: "Settings", icon: "⚙" },
 ];
 
-export function ProjectSidebar({ activeView, onViewChange, onRefresh, refreshKey }: Props) {
+export function ProjectSidebar({ activeView, onViewChange, onSelectWorkflow, onRefresh, refreshKey }: Props) {
   return (
     <aside className="w-56 border-r border-zinc-800 bg-zinc-900 flex flex-col">
       <div className="p-4 border-b border-zinc-800">
@@ -47,11 +49,7 @@ export function ProjectSidebar({ activeView, onViewChange, onRefresh, refreshKey
         ))}
 
         <WorkflowList
-          onSelect={(id) => {
-            // For now, just switch to workflow view
-            // TODO: load specific workflow by id
-            onViewChange("workflow");
-          }}
+          onSelect={onSelectWorkflow}
           refreshKey={refreshKey}
         />
       </nav>
