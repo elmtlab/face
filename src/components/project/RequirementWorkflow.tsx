@@ -184,8 +184,11 @@ export function RequirementWorkflow({ workflowId, onClose, onCreated }: Props) {
       });
       const data = await res.json();
       if (data.workflow) setWorkflow(data.workflow);
-      if (data.error) setError(data.error);
-      if (action === "create_issue" || action === "implement") onCreated();
+      if (data.error) {
+        setError(data.error);
+      } else if (action === "create_issue" || action === "implement") {
+        onCreated();
+      }
     } catch (e) {
       setError((e as Error).message);
     } finally {

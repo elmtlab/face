@@ -38,6 +38,16 @@ interface TaskInfo {
   summary?: string;
 }
 
+const PHASES: { key: Phase; label: string }[] = [
+  { key: "gathering", label: "Gather Requirements" },
+  { key: "planning", label: "Generate Story" },
+  { key: "review", label: "Review & Approve" },
+  { key: "approved", label: "Ready" },
+  { key: "implementing", label: "Implementing" },
+  { key: "done", label: "Done" },
+];
+
+
 const PHASE_CONFIG: Record<Phase, { label: string; color: string; icon: string }> = {
   gathering: { label: "Gathering", color: "bg-blue-600/20 text-blue-400 border-blue-600/30", icon: "?" },
   planning: { label: "Planning", color: "bg-purple-600/20 text-purple-400 border-purple-600/30", icon: "~" },
@@ -55,7 +65,7 @@ interface Props {
 export function RequirementsView({ onSelectWorkflow, onNewWorkflow }: Props) {
   const [workflows, setWorkflows] = useState<WorkflowState[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [taskStatuses, setTaskStatuses] = useState<Record<string, TaskInfo>>({});
 
   useEffect(() => {
@@ -91,7 +101,14 @@ export function RequirementsView({ onSelectWorkflow, onNewWorkflow }: Props) {
     });
   }, [workflows]);
 
-  const selected = selectedId ? workflows.find((w) => w.id === selectedId) : null;
+  const toggleExpand = (id: string) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   if (loading) {
     return (
@@ -102,313 +119,180 @@ export function RequirementsView({ onSelectWorkflow, onNewWorkflow }: Props) {
   }
 
   return (
-    <div className="flex h-full">
-      {/* List panel */}
-      <div className="w-96 border-r border-zinc-800 flex flex-col">
-        <div className="px-4 py-3 border-b border-zinc-800 flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-zinc-200">Requirements</h2>
-          <button
-            onClick={onNewWorkflow}
-            className="px-3 py-1.5 text-xs rounded-md bg-indigo-600 hover:bg-indigo-500 transition-colors"
-          >
-            + New
-          </button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto">
-          {workflows.length === 0 ? (
-            <div className="p-8 text-center">
-              <p className="text-zinc-500 text-sm mb-3">No requirements yet</p>
-              <button
-                onClick={onNewWorkflow}
-                className="px-4 py-2 text-sm rounded-md bg-indigo-600 hover:bg-indigo-500 transition-colors"
-              >
-                Create your first requirement
-              </button>
-            </div>
-          ) : (
-            <div className="divide-y divide-zinc-800/50">
-              {workflows.map((w) => {
-                const cfg = PHASE_CONFIG[w.phase];
-                const title =
-                  w.generatedStory?.title ??
-                  w.messages.find((m) => m.role === "user")?.content.slice(0, 80) ??
-                  "Untitled requirement";
-                const isActive = selectedId === w.id;
-
-                return (
-                  <button
-                    key={w.id}
-                    onClick={() => setSelectedId(w.id)}
-                    className={`w-full text-left px-4 py-3 transition-colors ${
-                      isActive
-                        ? "bg-zinc-800/80"
-                        : "hover:bg-zinc-800/40"
-                    }`}
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <span className="text-sm text-zinc-200 line-clamp-2">{title}</span>
-                      <span
-                        className={`text-[10px] px-1.5 py-0.5 rounded border shrink-0 ${cfg.color}`}
-                      >
-                        {cfg.label}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-3 mt-1.5">
-                      <span className="text-[10px] text-zinc-600">
-                        {new Date(w.updatedAt).toLocaleDateString()} {new Date(w.updatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                      </span>
-                      {w.issueUrl && (
-                        <span className="text-[10px] text-zinc-500">GitHub issue</span>
-                      )}
-                      {w.taskId && taskStatuses[w.taskId] && (
-                        <span className="text-[10px] text-zinc-500">
-                          Task: {taskStatuses[w.taskId].status}
-                        </span>
-                      )}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Detail panel */}
-      <div className="flex-1 overflow-y-auto">
-        {selected ? (
-          <WorkflowDetail
-            workflow={selected}
-            taskInfo={selected.taskId ? taskStatuses[selected.taskId] : undefined}
-            onOpen={() => onSelectWorkflow(selected.id)}
-          />
-        ) : (
-          <div className="flex items-center justify-center h-full text-zinc-600 text-sm">
-            Select a requirement to view details
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function WorkflowDetail({
-  workflow,
-  taskInfo,
-  onOpen,
-}: {
-  workflow: WorkflowState;
-  taskInfo?: TaskInfo;
-  onOpen: () => void;
-}) {
-  const cfg = PHASE_CONFIG[workflow.phase];
-  const story = workflow.generatedStory;
-
-  return (
-    <div className="p-6 max-w-3xl mx-auto space-y-6">
+    <div className="h-full flex flex-col">
       {/* Header */}
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex-1">
-          <h2 className="text-lg font-semibold text-zinc-100">
-            {story?.title ??
-              workflow.messages.find((m) => m.role === "user")?.content.slice(0, 100) ??
-              "Untitled requirement"}
-          </h2>
-          <div className="flex items-center gap-3 mt-2">
-            <span className={`text-xs px-2 py-0.5 rounded border ${cfg.color}`}>
-              {cfg.label}
-            </span>
-            <span className="text-xs text-zinc-500">
-              Created {new Date(workflow.createdAt).toLocaleDateString()}
-            </span>
-            <span className="text-xs text-zinc-500">
-              Updated {new Date(workflow.updatedAt).toLocaleDateString()}
-            </span>
-          </div>
-        </div>
+      <div className="px-6 py-4 border-b border-zinc-800 flex items-center justify-between">
+        <h2 className="text-sm font-semibold text-zinc-200">Requirements</h2>
         <button
-          onClick={onOpen}
-          className="px-3 py-1.5 text-xs rounded-md border border-zinc-700 text-zinc-300 hover:bg-zinc-800 transition-colors shrink-0"
+          onClick={onNewWorkflow}
+          className="px-3 py-1.5 text-xs rounded-md bg-indigo-600 hover:bg-indigo-500 transition-colors"
         >
-          Open Workflow
+          + New Requirement
         </button>
       </div>
 
-      {/* Progress summary */}
-      <div className="grid grid-cols-3 gap-3">
-        <StatusCard
-          label="PM Approval"
-          status={workflow.pmApproval}
-        />
-        <StatusCard
-          label="Eng Approval"
-          status={workflow.engApproval}
-        />
-        <StatusCard
-          label="Implementation"
-          status={
-            workflow.phase === "done"
-              ? "completed"
-              : workflow.phase === "implementing"
-                ? "in_progress"
-                : workflow.taskId
-                  ? taskInfo?.status ?? "unknown"
-                  : "not_started"
-          }
-        />
-      </div>
-
-      {/* GitHub Issue link */}
-      {workflow.issueUrl && (
-        <div className="bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-3">
-          <span className="text-xs text-zinc-500">GitHub Issue</span>
-          <a
-            href={workflow.issueUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="block text-sm text-indigo-400 hover:text-indigo-300 mt-0.5"
-          >
-            {workflow.issueUrl}
-          </a>
-        </div>
-      )}
-
-      {/* Generated Story */}
-      {story && (
-        <div className="bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden">
-          <div className="px-4 py-3 border-b border-zinc-800 flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-zinc-200">Generated Story</h3>
-            <div className="flex gap-2">
-              <span className="text-[10px] px-2 py-0.5 rounded bg-zinc-800 text-zinc-400 capitalize">
-                {story.priority}
-              </span>
-              <span className="text-[10px] px-2 py-0.5 rounded bg-zinc-800 text-zinc-400">
-                {story.estimatedEffort}
-              </span>
-            </div>
+      {/* Tree list */}
+      <div className="flex-1 overflow-y-auto p-4">
+        {workflows.length === 0 ? (
+          <div className="p-8 text-center">
+            <p className="text-zinc-500 text-sm mb-3">No requirements yet</p>
+            <button
+              onClick={onNewWorkflow}
+              className="px-4 py-2 text-sm rounded-md bg-indigo-600 hover:bg-indigo-500 transition-colors"
+            >
+              Create your first requirement
+            </button>
           </div>
-          <div className="p-4">
-            <div className="text-sm text-zinc-300 whitespace-pre-wrap leading-relaxed space-y-2">
-              {story.body.split("\n").map((line, i) => {
-                if (line.startsWith("## ")) {
-                  return (
-                    <h5 key={i} className="text-zinc-200 font-semibold mt-4 mb-1 text-sm">
-                      {line.replace("## ", "")}
-                    </h5>
-                  );
-                }
-                if (line.startsWith("- [ ] ")) {
-                  return (
-                    <label key={i} className="flex items-start gap-2 text-zinc-400">
-                      <input type="checkbox" disabled className="mt-1 accent-indigo-500" />
-                      <span>{line.replace("- [ ] ", "")}</span>
-                    </label>
-                  );
-                }
-                if (line.startsWith("- ")) {
-                  return (
-                    <p key={i} className="text-zinc-400 pl-4">
-                      {line.replace("- ", "• ")}
-                    </p>
-                  );
-                }
-                return line.trim() ? <p key={i}>{line}</p> : <br key={i} />;
-              })}
-            </div>
-            {story.labels.length > 0 && (
-              <div className="flex gap-1.5 mt-4">
-                {story.labels.map((l) => (
-                  <span
-                    key={l}
-                    className="text-[10px] px-2 py-0.5 rounded-full border border-zinc-600 text-zinc-400"
-                  >
-                    {l}
-                  </span>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+        ) : (
+          <div className="space-y-2">
+            {workflows.map((w) => {
+              const isExpanded = expandedIds.has(w.id);
+              const cfg = PHASE_CONFIG[w.phase];
+              const title =
+                w.generatedStory?.title ??
+                w.messages.find((m) => m.role === "user")?.content.slice(0, 80) ??
+                "Untitled requirement";
+              const currentPhaseIdx = PHASES.findIndex((p) => p.key === w.phase);
 
-      {/* Task info */}
-      {workflow.taskId && (
-        <div className="bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-3">
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-zinc-500">Implementation Task</span>
-            <span className={`text-[10px] px-1.5 py-0.5 rounded ${
-              taskInfo?.status === "completed"
-                ? "bg-emerald-600/20 text-emerald-400"
-                : taskInfo?.status === "failed"
-                  ? "bg-red-600/20 text-red-400"
-                  : "bg-amber-600/20 text-amber-400"
-            }`}>
-              {taskInfo?.status ?? workflow.phase === "done" ? "completed" : "running"}
-            </span>
-          </div>
-          <code className="text-xs text-zinc-400 font-mono mt-1 block">{workflow.taskId}</code>
-        </div>
-      )}
+              return (
+                <div key={w.id} className="rounded-lg border border-zinc-800 overflow-hidden">
+                  {/* Root requirement row */}
+                  <div className="flex items-center gap-2 bg-zinc-900/50 hover:bg-zinc-800/60 transition-colors">
+                    <button
+                      onClick={() => toggleExpand(w.id)}
+                      className="pl-3 py-3 pr-1 text-zinc-500 hover:text-zinc-300 shrink-0"
+                    >
+                      <span className={`inline-block transition-transform text-xs ${isExpanded ? "rotate-90" : ""}`}>
+                        ▶
+                      </span>
+                    </button>
 
-      {/* Conversation history */}
-      {workflow.messages.length > 0 && (
-        <div className="bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden">
-          <div className="px-4 py-3 border-b border-zinc-800">
-            <h3 className="text-sm font-semibold text-zinc-200">
-              Conversation ({workflow.messages.length} messages)
-            </h3>
-          </div>
-          <div className="p-4 space-y-3 max-h-96 overflow-y-auto">
-            {workflow.messages.map((msg, i) => (
-              <div
-                key={i}
-                className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
-              >
-                <div
-                  className={`max-w-[80%] rounded-lg px-3 py-2 text-xs ${
-                    msg.role === "user"
-                      ? "bg-indigo-600/10 text-indigo-200 border border-indigo-600/20"
-                      : "bg-zinc-800 text-zinc-300 border border-zinc-700"
-                  }`}
-                >
-                  <span className="text-[9px] font-medium uppercase tracking-wider text-zinc-500 block mb-0.5">
-                    {msg.role === "user" ? "You" : "AI"}
-                  </span>
-                  <p className="whitespace-pre-wrap leading-relaxed">
-                    {msg.content.replace("[READY_TO_PLAN]", "").trim()}
-                  </p>
+                    <button
+                      onClick={() => onSelectWorkflow(w.id)}
+                      className="flex-1 text-left py-3 pr-4 min-w-0"
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-sm text-zinc-200 truncate">{title}</span>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="text-[10px] text-zinc-600">
+                            {new Date(w.updatedAt).toLocaleDateString()}
+                          </span>
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded border ${cfg.color}`}>
+                            {cfg.label}
+                          </span>
+                        </div>
+                      </div>
+                    </button>
+                  </div>
+
+                  {/* Expanded sub-steps */}
+                  {isExpanded && (
+                    <div className="border-t border-zinc-800/50 bg-zinc-950/50">
+                      <div className="py-2 px-3">
+                        {PHASES.map((phase, i) => {
+                          const isDone = i < currentPhaseIdx;
+                          const isCurrent = i === currentPhaseIdx;
+                          const phaseCfg = PHASE_CONFIG[phase.key];
+
+                          // Build sub-step detail
+                          let detail = "";
+                          if (phase.key === "review" && (w.pmApproval !== "pending" || w.engApproval !== "pending")) {
+                            detail = `PM: ${w.pmApproval} · Eng: ${w.engApproval}`;
+                          }
+                          if (phase.key === "implementing" && w.taskId) {
+                            const taskInfo = taskStatuses[w.taskId];
+                            detail = taskInfo ? `Task: ${taskInfo.status}` : `Task: ${w.taskId.slice(0, 12)}...`;
+                          }
+                          if (phase.key === "planning" && w.generatedStory) {
+                            detail = "Story generated";
+                          }
+                          if (phase.key === "review" && w.issueUrl) {
+                            detail += detail ? " · GitHub issue created" : "GitHub issue created";
+                          }
+
+                          return (
+                            <div key={phase.key} className="flex items-center gap-3 py-1.5 pl-4">
+                              {/* Connector line + status dot */}
+                              <div className="relative flex flex-col items-center w-4 shrink-0">
+                                {i > 0 && (
+                                  <div className={`absolute -top-3 w-px h-3 ${isDone || isCurrent ? "bg-emerald-600/40" : "bg-zinc-700/50"}`} />
+                                )}
+                                <div
+                                  className={`w-2.5 h-2.5 rounded-full border ${
+                                    isDone
+                                      ? "bg-emerald-600 border-emerald-500"
+                                      : isCurrent
+                                        ? "bg-indigo-600 border-indigo-500 ring-2 ring-indigo-600/30"
+                                        : "bg-zinc-800 border-zinc-600"
+                                  }`}
+                                />
+                                {i < PHASES.length - 1 && (
+                                  <div className={`absolute -bottom-3 w-px h-3 ${isDone ? "bg-emerald-600/40" : "bg-zinc-700/50"}`} />
+                                )}
+                              </div>
+
+                              {/* Label */}
+                              <span
+                                className={`text-xs ${
+                                  isDone
+                                    ? "text-zinc-500 line-through"
+                                    : isCurrent
+                                      ? "text-zinc-200 font-medium"
+                                      : "text-zinc-600"
+                                }`}
+                              >
+                                {phase.label}
+                              </span>
+
+                              {/* Status badge for current */}
+                              {isCurrent && (
+                                <span className={`text-[10px] px-1.5 py-0.5 rounded border ${phaseCfg.color}`}>
+                                  In Progress
+                                </span>
+                              )}
+                              {isDone && (
+                                <span className="text-[10px] text-emerald-600">✓</span>
+                              )}
+
+                              {/* Detail text */}
+                              {detail && (
+                                <span className="text-[10px] text-zinc-600 ml-auto">{detail}</span>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* Action footer */}
+                      <div className="px-4 py-2 border-t border-zinc-800/50 flex items-center justify-between">
+                        <div className="flex items-center gap-3 text-[10px] text-zinc-600">
+                          <span>Created {new Date(w.createdAt).toLocaleDateString()}</span>
+                          {w.issueUrl && (
+                            <a
+                              href={w.issueUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-indigo-400 hover:text-indigo-300"
+                            >
+                              GitHub Issue ↗
+                            </a>
+                          )}
+                        </div>
+                        <button
+                          onClick={() => onSelectWorkflow(w.id)}
+                          className="text-[10px] px-2 py-1 rounded border border-zinc-700 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors"
+                        >
+                          Open Workflow →
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function StatusCard({ label, status }: { label: string; status: string }) {
-  const statusConfig: Record<string, { color: string; text: string }> = {
-    approved: { color: "bg-emerald-600/20 text-emerald-400", text: "Approved" },
-    rejected: { color: "bg-red-600/20 text-red-400", text: "Rejected" },
-    pending: { color: "bg-zinc-800 text-zinc-500", text: "Pending" },
-    completed: { color: "bg-emerald-600/20 text-emerald-400", text: "Completed" },
-    in_progress: { color: "bg-amber-600/20 text-amber-400", text: "In Progress" },
-    running: { color: "bg-amber-600/20 text-amber-400", text: "Running" },
-    failed: { color: "bg-red-600/20 text-red-400", text: "Failed" },
-    not_started: { color: "bg-zinc-800 text-zinc-500", text: "Not Started" },
-    unknown: { color: "bg-zinc-800 text-zinc-500", text: "Unknown" },
-  };
-
-  const cfg = statusConfig[status] ?? statusConfig.unknown;
-
-  return (
-    <div className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2.5 text-center">
-      <p className="text-[10px] text-zinc-500 mb-1">{label}</p>
-      <span className={`text-xs px-2 py-0.5 rounded ${cfg.color}`}>
-        {cfg.text}
-      </span>
+        )}
+      </div>
     </div>
   );
 }

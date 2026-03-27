@@ -162,11 +162,11 @@ export async function POST(
         { status: 400 }
       );
     }
-    if (!workflow.generatedStory || !workflow.issueUrl) {
-      return NextResponse.json({ error: "Missing story or issue" }, { status: 400 });
+    if (!workflow.generatedStory) {
+      return NextResponse.json({ error: "Missing story" }, { status: 400 });
     }
 
-    const prompt = buildImplementationPrompt(workflow.generatedStory, workflow.issueUrl);
+    const prompt = buildImplementationPrompt(workflow.generatedStory, workflow.issueUrl ?? undefined);
 
     const result = await submitTask("claude-code", prompt, {
       title: `Implement: ${workflow.generatedStory.title}`,
