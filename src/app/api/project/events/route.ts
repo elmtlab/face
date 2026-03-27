@@ -4,6 +4,8 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   const encoder = new TextEncoder();
+  let cleanup: (() => void) | null = null;
+
   const stream = new ReadableStream({
     start(controller) {
       const send = (event: string, data: unknown) => {
@@ -27,8 +29,7 @@ export async function GET() {
       eventBus.on("agent_started", onAgentStarted);
       eventBus.on("agent_completed", onAgentCompleted);
 
-      // Cleanup on close
-      const cleanup = () => {
+      cleanup = () => {
         clearInterval(heartbeat);
         eventBus.off("issue_created", onIssueCreated);
         eventBus.off("issue_updated", onIssueUpdated);
@@ -36,15 +37,10 @@ export async function GET() {
         eventBus.off("agent_completed", onAgentCompleted);
       };
 
-      // The stream will be closed by the client or server; use signal if available
       controller.enqueue(encoder.encode(": connected\n\n"));
-
-      // Store cleanup so it can be called
-      (stream as any).__cleanup = cleanup;
     },
     cancel() {
-      // Called when the client disconnects
-      if ((stream as any).__cleanup) (stream as any).__cleanup();
+      cleanup?.();
     },
   });
 
