@@ -3,6 +3,7 @@ import { readConfig } from "./file-manager";
 import { writeTask } from "./file-manager";
 import { eventBus } from "../events/bus";
 import type { FaceTask } from "./types";
+import { postCompletionComment } from "./github-notify";
 
 // Track running processes globally
 const globalForRunner = globalThis as unknown as {
@@ -23,6 +24,7 @@ export async function submitTask(
   options?: {
     workingDirectory?: string;
     title?: string;
+    linkedIssue?: number;
   }
 ): Promise<{ taskId: string; error?: string }> {
   const config = readConfig();
@@ -55,6 +57,7 @@ export async function submitTask(
     steps: [],
     activities: [],
     result: null,
+    linkedIssue: options?.linkedIssue,
   };
 
   // Write initial task file
@@ -133,6 +136,9 @@ function spawnClaudeCode(task: FaceTask, binaryPath: string): void {
       event: "change",
       filename: `${task.id}.json`,
     });
+
+    // Post completion comment to linked GitHub issue (fire-and-forget)
+    postCompletionComment(task);
   });
 
   child.on("error", (err) => {
@@ -145,6 +151,9 @@ function spawnClaudeCode(task: FaceTask, binaryPath: string): void {
       event: "change",
       filename: `${task.id}.json`,
     });
+
+    // Post completion comment to linked GitHub issue (fire-and-forget)
+    postCompletionComment(task);
   });
 }
 

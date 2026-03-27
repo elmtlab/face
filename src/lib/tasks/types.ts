@@ -43,6 +43,8 @@ export interface FaceTask {
   result: string | null;
   /** Session ID from the agent (used to correlate hooks) */
   sessionId?: string;
+  /** GitHub issue number to post completion summaries to */
+  linkedIssue?: number;
 }
 
 export interface AgentDetection {

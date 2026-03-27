@@ -15,7 +15,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const { agentId, prompt, title, workingDirectory } = body;
+  const { agentId, prompt, title, workingDirectory, linkedIssue } = body;
 
   if (typeof agentId !== "string" || !KNOWN_AGENTS.has(agentId)) {
     return NextResponse.json(
@@ -58,9 +58,23 @@ export async function POST(request: NextRequest) {
   const safeTitle =
     typeof title === "string" ? title.slice(0, MAX_TITLE_LENGTH) : undefined;
 
+  // Validate linkedIssue if provided
+  let issueNumber: number | undefined;
+  if (linkedIssue != null) {
+    const parsed = Number(linkedIssue);
+    if (!Number.isInteger(parsed) || parsed <= 0) {
+      return NextResponse.json(
+        { error: "linkedIssue must be a positive integer" },
+        { status: 400 }
+      );
+    }
+    issueNumber = parsed;
+  }
+
   const result = await submitTask(agentId, prompt.trim(), {
     title: safeTitle,
     workingDirectory: cwd,
+    linkedIssue: issueNumber,
   });
 
   if (result.error) {

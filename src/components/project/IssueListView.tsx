@@ -51,6 +51,8 @@ export function IssueListView({ onSelectIssue, onAssignAgent }: Props) {
 
   useEffect(() => {
     fetchIssues();
+    const interval = setInterval(fetchIssues, 30_000);
+    return () => clearInterval(interval);
   }, [fetchIssues]);
 
   if (error) {
