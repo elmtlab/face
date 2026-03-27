@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { TaskStatusPanel } from "./TaskStatusPanel";
 
 // ── Types (mirroring server) ───────────────────────────────────────
 
@@ -248,7 +249,15 @@ export function RequirementWorkflow({ workflowId, onClose, onCreated }: Props) {
 
         {/* Implementing */}
         {workflow.phase === "implementing" && (
-          <ImplementingView workflow={workflow} />
+          <ImplementingView
+            workflow={workflow}
+            onDone={() => {
+              setWorkflow((w) =>
+                w ? { ...w, phase: "done", updatedAt: new Date().toISOString() } : null
+              );
+              onCreated();
+            }}
+          />
         )}
 
         {/* Done */}
@@ -590,66 +599,85 @@ function ApprovedView({
         {loading ? "Triggering..." : "Start Implementation with AI Agent"}
       </button>
       <p className="text-[10px] text-zinc-600 text-center">
-        This will spawn an AI agent task visible in the FACE dashboard
+        This will spawn an AI agent task — progress shown here in real time
       </p>
     </div>
   );
 }
 
-function ImplementingView({ workflow }: { workflow: WorkflowState }) {
+function ImplementingView({
+  workflow,
+  onDone,
+}: {
+  workflow: WorkflowState;
+  onDone: () => void;
+}) {
+  const handleStatusChange = useCallback(
+    (status: string) => {
+      if (status === "completed" || status === "failed") onDone();
+    },
+    [onDone]
+  );
+
   return (
-    <div className="p-6 flex flex-col items-center justify-center gap-4">
-      <div className="w-16 h-16 rounded-full bg-amber-600/20 flex items-center justify-center animate-pulse">
-        <span className="text-2xl">⚡</span>
-      </div>
-      <h3 className="text-lg font-semibold text-zinc-200">Implementation In Progress</h3>
-      <p className="text-sm text-zinc-400 text-center">
-        AI agent is working on this story.
-      </p>
-      {workflow.taskId && (
-        <div className="bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-3 text-center">
-          <p className="text-xs text-zinc-500 mb-1">Task ID</p>
-          <code className="text-sm text-zinc-300 font-mono">{workflow.taskId}</code>
+    <div className="p-6 space-y-4 max-w-2xl mx-auto">
+      <div className="flex items-center gap-3">
+        <div className="w-10 h-10 rounded-full bg-amber-600/20 flex items-center justify-center animate-pulse shrink-0">
+          <span className="text-lg">⚡</span>
         </div>
+        <div>
+          <h3 className="text-base font-semibold text-zinc-200">Implementation In Progress</h3>
+          <p className="text-xs text-zinc-500">AI agent is working on this story</p>
+        </div>
+      </div>
+
+      {workflow.issueUrl && (
+        <a
+          href={workflow.issueUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="block text-xs text-indigo-400 hover:text-indigo-300"
+        >
+          GitHub Issue: {workflow.issueUrl} ↗
+        </a>
       )}
-      <a
-        href="/"
-        className="text-sm text-indigo-400 hover:text-indigo-300 transition-colors"
-      >
-        View in FACE Dashboard →
-      </a>
+
+      {workflow.taskId && (
+        <TaskStatusPanel taskId={workflow.taskId} onStatusChange={handleStatusChange} />
+      )}
     </div>
   );
 }
 
 function DoneView({ workflow, onClose }: { workflow: WorkflowState; onClose: () => void }) {
   return (
-    <div className="p-6 flex flex-col items-center justify-center gap-4">
-      <div className="w-16 h-16 rounded-full bg-emerald-600/20 flex items-center justify-center">
-        <span className="text-2xl">✓</span>
+    <div className="p-6 space-y-4 max-w-2xl mx-auto">
+      <div className="flex items-center gap-3">
+        <div className="w-10 h-10 rounded-full bg-emerald-600/20 flex items-center justify-center shrink-0">
+          <span className="text-lg">✓</span>
+        </div>
+        <div>
+          <h3 className="text-base font-semibold text-zinc-200">Implementation Complete</h3>
+          <p className="text-xs text-zinc-500">The AI agent has finished working on this story</p>
+        </div>
       </div>
-      <h3 className="text-lg font-semibold text-zinc-200">Implementation Complete</h3>
-      <p className="text-sm text-zinc-400 text-center max-w-md">
-        The AI agent has finished working on this story.
-        Check the FACE dashboard for results.
-      </p>
-      <div className="flex gap-3">
-        {workflow.issueUrl && (
-          <a
-            href={workflow.issueUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="px-4 py-2 text-sm rounded-md border border-zinc-700 text-zinc-300 hover:bg-zinc-800"
-          >
-            View Issue ↗
-          </a>
-        )}
+
+      {workflow.issueUrl && (
         <a
-          href="/"
-          className="px-4 py-2 text-sm rounded-md border border-zinc-700 text-zinc-300 hover:bg-zinc-800"
+          href={workflow.issueUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="block text-xs text-indigo-400 hover:text-indigo-300"
         >
-          FACE Dashboard
+          GitHub Issue: {workflow.issueUrl} ↗
         </a>
+      )}
+
+      {workflow.taskId && (
+        <TaskStatusPanel taskId={workflow.taskId} />
+      )}
+
+      <div className="flex gap-3 pt-2">
         <button
           onClick={onClose}
           className="px-4 py-2 text-sm rounded-md bg-indigo-600 hover:bg-indigo-500"
