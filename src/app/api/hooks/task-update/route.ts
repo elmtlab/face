@@ -3,6 +3,7 @@ import { readTask, writeTask, readAllTasks } from "@/lib/tasks/file-manager";
 import { buildActivities, buildSummary } from "@/lib/tasks/summarize";
 import { summarizePrompt } from "@/lib/tasks/ai-summarize";
 import { eventBus } from "@/lib/events/bus";
+import { postCompletionComment } from "@/lib/tasks/github-notify";
 import type { FaceTask, FaceTaskStep } from "@/lib/tasks/types";
 
 const SAFE_ID_RE = /^[a-zA-Z0-9_-]+$/;
@@ -149,6 +150,11 @@ export async function POST(request: NextRequest) {
       event: "change",
       filename: `${task.id}.json`,
     });
+
+    // Post completion comment to linked GitHub issue on terminal states (fire-and-forget)
+    if (task.status === "completed" || task.status === "failed" || task.status === "cancelled") {
+      postCompletionComment(task);
+    }
 
     return NextResponse.json({ ok: true, taskId: task.id });
   } catch (err) {
