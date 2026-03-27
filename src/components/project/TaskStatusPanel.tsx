@@ -55,79 +55,70 @@ const CATEGORY_ICONS: Record<string, string> = {
   other: "○",
 };
 
+const TERMINAL_STATUSES = new Set(["completed", "failed", "cancelled"]);
+
 export function TaskStatusPanel({ taskId, onStatusChange }: Props) {
   const [task, setTask] = useState<TaskData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedSection, setExpandedSection] = useState<"activities" | "steps" | "result" | null>("activities");
 
+  // Single polling effect — fetches immediately, then every 3s until terminal
   useEffect(() => {
     let active = true;
+    let lastStatus = "";
 
     const fetchTask = async () => {
       try {
         const res = await fetch(`/api/tasks/${taskId}`);
         if (!res.ok) {
-          setError("Task not found");
-          setLoading(false);
-          return;
+          if (active) { setError("Task not found"); setLoading(false); }
+          return false; // stop polling
         }
         const data = await res.json();
-        // The API returns the task directly (not nested under .task based on route.ts)
-        const t = data.task ?? data;
-        if (active) {
-          setTask(t);
-          setLoading(false);
+        // API returns flat task object (not wrapped in { task: ... })
+        const t: TaskData = data.id ? data : data.task;
+        if (!active) return false;
+
+        setTask(t);
+        setLoading(false);
+
+        // Only fire callback when status actually changes
+        if (t.status !== lastStatus) {
+          lastStatus = t.status;
           onStatusChange?.(t.status);
         }
+
+        return !TERMINAL_STATUSES.has(t.status); // keep polling?
       } catch {
-        if (active) {
-          setError("Failed to load task");
-          setLoading(false);
-        }
+        if (active) { setError("Failed to load task"); setLoading(false); }
+        return false;
       }
     };
 
-    fetchTask();
+    // Initial fetch
+    fetchTask().then((shouldPoll) => {
+      if (!shouldPoll || !active) return;
 
-    // Poll while running
-    const interval = setInterval(() => {
-      if (task?.status === "completed" || task?.status === "failed" || task?.status === "cancelled") {
-        clearInterval(interval);
-        return;
-      }
-      fetchTask();
-    }, 3000);
+      // Start polling
+      const interval = setInterval(async () => {
+        const keepGoing = await fetchTask();
+        if (!keepGoing) clearInterval(interval);
+      }, 3000);
+
+      // Store cleanup ref
+      const cleanup = () => clearInterval(interval);
+      cleanupRef = cleanup;
+    });
+
+    let cleanupRef: (() => void) | null = null;
 
     return () => {
       active = false;
-      clearInterval(interval);
+      cleanupRef?.();
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [taskId]);
-
-  // Continue polling when status is still active
-  useEffect(() => {
-    if (!task || task.status === "completed" || task.status === "failed" || task.status === "cancelled") return;
-
-    const interval = setInterval(async () => {
-      try {
-        const res = await fetch(`/api/tasks/${taskId}`);
-        const data = await res.json();
-        const t = data.task ?? data;
-        setTask(t);
-        onStatusChange?.(t.status);
-        if (t.status === "completed" || t.status === "failed" || t.status === "cancelled") {
-          clearInterval(interval);
-        }
-      } catch {
-        // ignore
-      }
-    }, 3000);
-
-    return () => clearInterval(interval);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [task?.status, taskId]);
 
   if (loading) {
     return (

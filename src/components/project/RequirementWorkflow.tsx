@@ -119,26 +119,24 @@ export function RequirementWorkflow({ workflowId, onClose, onCreated }: Props) {
     if (workflow && !loading) inputRef.current?.focus();
   }, [workflow, loading]);
 
-  // Poll task status during implementation
-  useEffect(() => {
-    if (workflow?.phase !== "implementing" || !workflow.taskId) return;
-    const interval = setInterval(async () => {
-      try {
-        const res = await fetch(`/api/tasks/${workflow.taskId}`);
-        const data = await res.json();
-        if (data.task?.status === "completed" || data.task?.status === "failed") {
-          setWorkflow((w) =>
-            w ? { ...w, phase: "done", updatedAt: new Date().toISOString() } : null
-          );
-          clearInterval(interval);
-          onCreated();
-        }
-      } catch {
-        // ignore
-      }
-    }, 3000);
-    return () => clearInterval(interval);
-  }, [workflow?.phase, workflow?.taskId, onCreated]);
+  // Persist workflow "done" state to disk and update local state
+  const markDone = useCallback(async () => {
+    if (!workflow) return;
+    setWorkflow((w) =>
+      w ? { ...w, phase: "done", updatedAt: new Date().toISOString() } : null
+    );
+    // Persist to disk
+    try {
+      await fetch(`/api/project/workflow/${workflow.id}/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "complete" }),
+      });
+    } catch {
+      // best-effort
+    }
+    onCreated();
+  }, [workflow?.id, onCreated]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const sendMessage = async () => {
     if (!workflow || !input.trim() || loading) return;
@@ -249,15 +247,7 @@ export function RequirementWorkflow({ workflowId, onClose, onCreated }: Props) {
 
         {/* Implementing */}
         {workflow.phase === "implementing" && (
-          <ImplementingView
-            workflow={workflow}
-            onDone={() => {
-              setWorkflow((w) =>
-                w ? { ...w, phase: "done", updatedAt: new Date().toISOString() } : null
-              );
-              onCreated();
-            }}
-          />
+          <ImplementingView workflow={workflow} onDone={markDone} />
         )}
 
         {/* Done */}
