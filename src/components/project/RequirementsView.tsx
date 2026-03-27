@@ -69,13 +69,19 @@ export function RequirementsView({ onSelectWorkflow, onNewWorkflow }: Props) {
   const [taskStatuses, setTaskStatuses] = useState<Record<string, TaskInfo>>({});
 
   useEffect(() => {
-    fetch("/api/project/workflow")
-      .then((r) => r.json())
-      .then((d) => {
-        setWorkflows(d.workflows ?? []);
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
+    const fetchWorkflows = () => {
+      fetch("/api/project/workflow")
+        .then((r) => r.json())
+        .then((d) => {
+          setWorkflows(d.workflows ?? []);
+          setLoading(false);
+        })
+        .catch(() => setLoading(false));
+    };
+
+    fetchWorkflows();
+    const interval = setInterval(fetchWorkflows, 30_000);
+    return () => clearInterval(interval);
   }, []);
 
   // Fetch task statuses for implementing/done workflows

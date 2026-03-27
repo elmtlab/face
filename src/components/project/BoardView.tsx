@@ -39,17 +39,23 @@ export function BoardView({ onSelectIssue, onAssignAgent }: Props) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch("/api/project/board")
-      .then((r) => r.json())
-      .then((data) => {
-        if (data.error) {
-          setError(data.error);
-        } else {
-          setColumns(data.project.columns);
-        }
-      })
-      .catch((e) => setError(e.message))
-      .finally(() => setLoading(false));
+    const fetchBoard = () => {
+      fetch("/api/project/board")
+        .then((r) => r.json())
+        .then((data) => {
+          if (data.error) {
+            setError(data.error);
+          } else {
+            setColumns(data.project.columns);
+          }
+        })
+        .catch((e) => setError(e.message))
+        .finally(() => setLoading(false));
+    };
+
+    fetchBoard();
+    const interval = setInterval(fetchBoard, 30_000);
+    return () => clearInterval(interval);
   }, []);
 
   if (loading) {

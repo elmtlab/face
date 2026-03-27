@@ -33,9 +33,15 @@ export function WorkflowList({ onSelect, refreshKey }: Props) {
   const [workflows, setWorkflows] = useState<WorkflowSummary[]>([]);
 
   useEffect(() => {
-    fetch("/api/project/workflow")
-      .then((r) => r.json())
-      .then((d) => setWorkflows(d.workflows ?? []));
+    const fetchWorkflows = () => {
+      fetch("/api/project/workflow")
+        .then((r) => r.json())
+        .then((d) => setWorkflows(d.workflows ?? []));
+    };
+
+    fetchWorkflows();
+    const interval = setInterval(fetchWorkflows, 30_000);
+    return () => clearInterval(interval);
   }, [refreshKey]);
 
   if (workflows.length === 0) return null;
