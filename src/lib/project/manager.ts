@@ -4,9 +4,11 @@ import { homedir } from "os";
 import type { ProjectProvider, ProjectProviderConfig } from "./types";
 import { createProvider, registerProvider } from "./registry";
 import { GitHubProvider } from "./providers/github";
+import { LinearProvider } from "./providers/linear";
 
 // Register built-in providers
 registerProvider("github", () => new GitHubProvider());
+registerProvider("linear", () => new LinearProvider());
 
 const CONFIG_DIR = join(homedir(), ".face");
 const CONFIG_FILE = join(CONFIG_DIR, "project-providers.json");
