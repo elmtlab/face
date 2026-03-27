@@ -138,11 +138,9 @@ Requirements for the body:
 - Out of Scope: what this story does NOT cover`;
 }
 
-export function buildImplementationPrompt(story: GeneratedStory, issueUrl: string): string {
+export function buildImplementationPrompt(story: GeneratedStory, issueUrl?: string): string {
   return `You are implementing the following approved story. Work on it carefully and completely.
-
-ISSUE: ${issueUrl}
-
+${issueUrl ? `\nISSUE: ${issueUrl}\n` : ""}
 TITLE: ${story.title}
 
 ${story.body}
