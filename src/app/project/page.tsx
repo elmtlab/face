@@ -75,7 +75,7 @@ export default function ProjectPage() {
           )}
           {view === "milestones" && (
             <MilestoneView
-              onFilterBoard={(title) => {
+              onFilterBoard={() => {
                 // TODO: Filter board by milestone
                 setView("board");
               }}
