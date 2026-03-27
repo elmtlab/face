@@ -26,9 +26,17 @@ export function TaskRow({
       : null;
 
   return (
-    <button
+    <div
+      role="button"
+      tabIndex={0}
       onClick={() => onSelectAction(task.id)}
-      className={`w-full text-left rounded-lg border p-3 transition-all ${
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onSelectAction(task.id);
+        }
+      }}
+      className={`w-full text-left rounded-lg border p-3 transition-all cursor-pointer ${
         selected
           ? "border-blue-700 bg-blue-950/30 shadow-lg shadow-blue-900/10"
           : "border-zinc-800 bg-zinc-900 hover:border-zinc-700 hover:bg-zinc-900/80"
@@ -88,6 +96,6 @@ export function TaskRow({
           <div className="h-full rounded-full bg-blue-500 transition-all animate-pulse" style={{ width: "60%" }} />
         </div>
       )}
-    </button>
+    </div>
   );
 }
