@@ -197,6 +197,14 @@ export async function POST(
     return NextResponse.json({ workflow, taskId: result.taskId });
   }
 
+  // ── Mark workflow complete ─────────────────────────────────────
+  if (body.action === "complete") {
+    workflow.phase = "done";
+    workflow.updatedAt = new Date().toISOString();
+    saveWorkflow(workflow);
+    return NextResponse.json({ workflow });
+  }
+
   return NextResponse.json({ error: "Unknown action" }, { status: 400 });
 }
 
