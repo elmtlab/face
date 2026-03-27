@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import type { Issue, IssueStatus } from "@/lib/project/types";
+import { useProjectEvents } from "@/lib/project/use-project-events";
 
 interface Props {
   onSelectIssue: (id: string) => void;
@@ -54,6 +55,10 @@ export function IssueListView({ onSelectIssue, onAssignAgent }: Props) {
     const interval = setInterval(fetchIssues, 30_000);
     return () => clearInterval(interval);
   }, [fetchIssues]);
+
+  useProjectEvents(() => {
+    fetchIssues();
+  }, ["issue_created", "issue_updated"]);
 
   if (error) {
     return (
