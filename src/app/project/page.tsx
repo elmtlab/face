@@ -9,8 +9,9 @@ import { SettingsView } from "@/components/project/SettingsView";
 import { AgentPanel } from "@/components/project/AgentPanel";
 import { RequirementWorkflow } from "@/components/project/RequirementWorkflow";
 import { RequirementsView } from "@/components/project/RequirementsView";
+import { MilestoneView } from "@/components/project/MilestoneView";
 
-export type ViewMode = "board" | "list" | "workflow" | "requirements" | "settings";
+export type ViewMode = "board" | "list" | "workflow" | "requirements" | "milestones" | "settings";
 
 export default function ProjectPage() {
   const [view, setView] = useState<ViewMode>("board");
@@ -69,6 +70,14 @@ export default function ProjectPage() {
               onNewWorkflow={() => {
                 setSelectedWorkflowId(null);
                 setView("workflow");
+              }}
+            />
+          )}
+          {view === "milestones" && (
+            <MilestoneView
+              onFilterBoard={(title) => {
+                // TODO: Filter board by milestone
+                setView("board");
               }}
             />
           )}
