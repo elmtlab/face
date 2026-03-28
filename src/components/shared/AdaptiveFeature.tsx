@@ -12,6 +12,8 @@ interface AdaptiveFeatureProps {
   alwaysShow?: boolean;
   /** Render collapsed version when hidden (e.g. a "Show more" link) */
   collapsedContent?: ReactNode;
+  /** Additional CSS classes for the wrapper div */
+  className?: string;
 }
 
 export function AdaptiveFeature({
@@ -20,6 +22,7 @@ export function AdaptiveFeature({
   trackOnView = false,
   alwaysShow = false,
   collapsedContent,
+  className,
 }: AdaptiveFeatureProps) {
   const { isFeatureVisible, isFeaturePinned, trackFeature, getFeatureScore } =
     useUser();
@@ -53,7 +56,7 @@ export function AdaptiveFeature({
       onClick={() => trackFeature(featureId)}
       className={`transition-opacity duration-300 ${
         pinned ? "opacity-100" : score < 0.5 ? "opacity-70" : "opacity-90"
-      }`}
+      }${className ? ` ${className}` : ""}`}
     >
       {children}
     </div>
