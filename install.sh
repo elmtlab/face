@@ -5,7 +5,7 @@ FACE_DIR="${FACE_DIR:-$HOME/.face}"
 BIN_DIR="${BIN_DIR:-$HOME/.local/bin}"
 
 # Check prerequisites
-for cmd in node npm; do
+for cmd in node bun; do
   if ! command -v "$cmd" &>/dev/null; then
     echo "Error: $cmd is not installed." >&2
     exit 1
@@ -15,10 +15,10 @@ done
 echo "Installing FACE..."
 
 # Install dependencies
-npm install
+bun install
 
 # Build the app
-npm run build
+bun run build
 
 # Create data directory
 mkdir -p "$FACE_DIR" "$BIN_DIR"
@@ -49,7 +49,7 @@ case "\${1:-start}" in
     fi
     mkdir -p "\$FACE_DIR"
     cd "\$FACE_ROOT"
-    nohup npx next start --port "\$PORT" >> "\$LOG_FILE" 2>&1 &
+    nohup bunx next start --port "\$PORT" >> "\$LOG_FILE" 2>&1 &
     echo \$! > "\$PID_FILE"
     echo "FACE started in background (PID \$!)."
     echo "http://localhost:\$PORT"
@@ -63,7 +63,7 @@ case "\${1:-start}" in
     fi
     mkdir -p "\$FACE_DIR"
     cd "\$FACE_ROOT"
-    nohup npx next dev --port "\$PORT" >> "\$LOG_FILE" 2>&1 &
+    nohup bunx next dev --port "\$PORT" >> "\$LOG_FILE" 2>&1 &
     echo \$! > "\$PID_FILE"
     echo "FACE started in dev mode (PID \$!)."
     echo "http://localhost:\$PORT"

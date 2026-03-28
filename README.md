@@ -9,8 +9,8 @@ The working reference point is tools like Claude Code: fast, agent-driven, termi
 ```bash
 git clone https://github.com/anthropics/face.git
 cd face
-npm install
-npm run dev
+bun install
+bun dev
 ```
 
 Then open [http://localhost:3000](http://localhost:3000).
@@ -39,11 +39,11 @@ On first launch, FACE detects installed AI agents (Claude Code, Codex) and confi
 
 | Command | Description |
 |---------|-------------|
-| `npm install` | Install dependencies |
-| `npm run dev` | Start dev server ([http://localhost:3000](http://localhost:3000)) |
-| `npm run build` | Production build |
-| `npm run start` | Start production server |
-| `npm run lint` | Run linter |
+| `bun install` | Install dependencies |
+| `bun dev` | Start dev server ([http://localhost:3000](http://localhost:3000)) |
+| `bun run build` | Production build |
+| `bun start` | Start production server |
+| `bun run lint` | Run linter |
 
 ## How It Works
 
