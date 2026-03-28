@@ -33,8 +33,14 @@ export async function POST(
 
   const body = await req.json();
 
-  // ── Chat message (gathering phase) ────────────────────────────
+  // ── Chat message (gathering / planning phase) ────────────────
   if (body.message) {
+    if (workflow.phase !== "gathering" && workflow.phase !== "planning") {
+      return NextResponse.json(
+        { error: "Chat is only available during gathering or planning phases" },
+        { status: 400 }
+      );
+    }
     const userMsg: ChatMessage = {
       role: "user",
       content: body.message,
@@ -67,6 +73,12 @@ export async function POST(
 
   // ── Generate story ────────────────────────────────────────────
   if (body.action === "generate_story") {
+    if (workflow.phase !== "planning") {
+      return NextResponse.json(
+        { error: "Story generation is only available in the planning phase" },
+        { status: 400 }
+      );
+    }
     const planPrompt = buildPlanningPrompt(workflow.messages);
     const raw = await callAI(
       "You are a technical writer that outputs only valid JSON.",
@@ -116,6 +128,12 @@ export async function POST(
 
   // ── Approval ──────────────────────────────────────────────────
   if (body.action === "approve" || body.action === "reject") {
+    if (workflow.phase !== "review") {
+      return NextResponse.json(
+        { error: "Approvals are only available during the review phase" },
+        { status: 400 }
+      );
+    }
     const role = body.role as "pm" | "eng";
     const status = body.action === "approve" ? "approved" : "rejected";
 
@@ -127,9 +145,31 @@ export async function POST(
       workflow.phase = "approved";
     }
 
-    // If either rejected, go back to review
+    // If either rejected, go back to planning so the user can refine and re-generate
     if (status === "rejected") {
-      workflow.phase = "review";
+      // Capture the previous story before clearing it
+      const prevStory = workflow.generatedStory;
+      workflow.phase = "planning";
+      workflow.generatedStory = null;
+      workflow.pmApproval = "pending";
+      workflow.engApproval = "pending";
+
+      let recap = "Changes requested. Here's what was in the previous story for reference:\n\n";
+      if (prevStory) {
+        recap += `**${prevStory.title}**\n\n${prevStory.body}\n\n`;
+        recap += `**Priority:** ${prevStory.priority} · **Effort:** ${prevStory.estimatedEffort}`;
+        if (prevStory.labels?.length) {
+          recap += ` · **Labels:** ${prevStory.labels.join(", ")}`;
+        }
+        recap += "\n\n";
+      }
+      recap += "Please let me know what needs to be changed, and I'll generate a revised story.";
+
+      workflow.messages.push({
+        role: "assistant",
+        content: recap,
+        timestamp: new Date().toISOString(),
+      });
     }
 
     workflow.updatedAt = new Date().toISOString();
