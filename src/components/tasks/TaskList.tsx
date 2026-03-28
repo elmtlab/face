@@ -44,7 +44,7 @@ export function TaskList() {
   return (
     <div className="flex flex-col lg:flex-row flex-1 gap-4 min-h-0">
       {/* Task list column */}
-      <div className="flex flex-col w-full lg:w-72 xl:w-80 lg:flex-shrink-0">
+      <div className="flex flex-col w-full lg:w-72 xl:w-80 lg:flex-shrink-0 min-h-0">
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
             Tasks
@@ -64,7 +64,7 @@ export function TaskList() {
             <option value="failed">Failed</option>
           </select>
         </div>
-        <div className="space-y-2 overflow-y-auto flex-1 max-h-48 lg:max-h-none">
+        <div className="space-y-2 overflow-y-auto flex-1 min-h-0">
           {filtered.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-zinc-600">
               <svg className="h-8 w-8 mb-3 text-zinc-700" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">

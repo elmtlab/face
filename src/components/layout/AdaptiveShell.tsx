@@ -27,7 +27,7 @@ export function AdaptiveShell() {
           </div>
         </AdaptiveFeature>
         {/* Task list */}
-        <AdaptiveFeature featureId="task-list" alwaysShow>
+        <AdaptiveFeature featureId="task-list" alwaysShow className="flex-1 min-h-0 overflow-hidden">
           <TaskList />
         </AdaptiveFeature>
       </main>
