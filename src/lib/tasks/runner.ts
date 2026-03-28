@@ -98,12 +98,38 @@ export async function submitTask(
   return { taskId };
 }
 
+/** Build a human-readable description from a tool_use content block. */
+function describeToolUse(name: string, input: Record<string, unknown>): string {
+  const file =
+    (input.file_path as string) ??
+    (input.path as string) ??
+    (input.filename as string) ??
+    null;
+  const short = file ? file.split("/").pop() : null;
+
+  switch (name) {
+    case "Read":
+      return short ? `Reading ${short}` : "Reading file";
+    case "Write":
+      return short ? `Writing ${short}` : "Writing file";
+    case "Edit":
+      return short ? `Editing ${short}` : "Editing file";
+    case "Bash":
+      return "Running command";
+    case "Grep":
+    case "Glob":
+      return "Searching files";
+    default:
+      return name;
+  }
+}
+
 function spawnClaudeCode(task: FaceTask, binaryPath: string): void {
   const args = [
     "-p",
     task.prompt,
     "--output-format",
-    "json",
+    "stream-json",
   ];
 
   // Allowlist env vars — don't leak secrets to child processes
@@ -125,11 +151,90 @@ function spawnClaudeCode(task: FaceTask, binaryPath: string): void {
   runningTasks.set(task.id, child);
 
   const MAX_OUTPUT = 2 * 1024 * 1024; // 2MB cap
-  let stdout = "";
   let stderr = "";
+  let lineBuf = ""; // buffer for partial lines from stdout
+  let stepIndex = 0;
+  let lastWriteAt = 0;
+  const WRITE_THROTTLE_MS = 1000;
+
+  /** Persist task to disk (throttled — at most once per second). */
+  function throttledWrite(force?: boolean) {
+    const now = Date.now();
+    if (!force && now - lastWriteAt < WRITE_THROTTLE_MS) return;
+    lastWriteAt = now;
+    task.updatedAt = new Date().toISOString();
+    writeTask(task);
+    eventBus.emit("task-file-changed", {
+      event: "change",
+      filename: `${task.id}.json`,
+    });
+  }
+
+  /** Mark the most recent running step as completed. */
+  function completeCurrentStep() {
+    const running = task.steps.findLast((s) => s.status === "running");
+    if (running) {
+      running.status = "completed";
+    }
+  }
+
+  /** Process a single parsed stream-json event. */
+  function handleStreamEvent(evt: Record<string, unknown>) {
+    if (evt.type === "assistant") {
+      const msg = evt.message as { content?: Array<Record<string, unknown>> } | undefined;
+      if (!msg?.content) return;
+
+      for (const block of msg.content) {
+        if (block.type === "tool_use") {
+          // Mark any previous running step as completed
+          completeCurrentStep();
+
+          const toolName = (block.name as string) ?? "unknown";
+          const toolInput = (block.input as Record<string, unknown>) ?? {};
+          const description = describeToolUse(toolName, toolInput);
+
+          task.steps.push({
+            id: `step-${stepIndex++}`,
+            tool: toolName,
+            description,
+            status: "running",
+            timestamp: new Date().toISOString(),
+          });
+
+          task.summary = description;
+          throttledWrite();
+        }
+      }
+    } else if (evt.type === "result") {
+      // Final event — complete last step and capture result
+      completeCurrentStep();
+      const resultText = (evt.result as string) ?? "";
+      task.result = resultText;
+      task.summary = resultText.slice(0, 200) || task.summary;
+      // Will be written on close, no need to throttle here
+    }
+  }
 
   child.stdout?.on("data", (data: Buffer) => {
-    if (stdout.length < MAX_OUTPUT) stdout += data.toString();
+    lineBuf += data.toString();
+    if (lineBuf.length > MAX_OUTPUT) {
+      lineBuf = lineBuf.slice(-MAX_OUTPUT);
+    }
+
+    // Process complete lines (newline-delimited JSON)
+    let newlineIdx: number;
+    while ((newlineIdx = lineBuf.indexOf("\n")) !== -1) {
+      const line = lineBuf.slice(0, newlineIdx).trim();
+      lineBuf = lineBuf.slice(newlineIdx + 1);
+      if (!line) continue;
+
+      try {
+        const evt = JSON.parse(line) as Record<string, unknown>;
+        handleStreamEvent(evt);
+      } catch {
+        // Not valid JSON — ignore (could be stray stderr or partial line)
+      }
+    }
   });
 
   child.stderr?.on("data", (data: Buffer) => {
@@ -139,16 +244,24 @@ function spawnClaudeCode(task: FaceTask, binaryPath: string): void {
   child.on("close", (code) => {
     runningTasks.delete(task.id);
 
+    // Process any remaining partial line in the buffer
+    if (lineBuf.trim()) {
+      try {
+        const evt = JSON.parse(lineBuf.trim()) as Record<string, unknown>;
+        handleStreamEvent(evt);
+      } catch {
+        // ignore
+      }
+    }
+
+    completeCurrentStep();
+
     task.status = code === 0 ? "completed" : "failed";
     task.updatedAt = new Date().toISOString();
 
-    // Try to parse JSON output
-    try {
-      const result = JSON.parse(stdout);
-      task.result = result.result ?? stdout;
-      task.summary = result.result?.slice(0, 200) ?? null;
-    } catch {
-      task.result = stdout || stderr || `Process exited with code ${code}`;
+    // If no result was captured from stream events, fall back to stderr
+    if (!task.result) {
+      task.result = stderr || `Process exited with code ${code}`;
     }
 
     writeTask(task);

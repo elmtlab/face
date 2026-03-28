@@ -70,7 +70,10 @@ export function TaskStatusPanel({ taskId, onStatusChange }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [markingFailed, setMarkingFailed] = useState(false);
-  const [expandedSection, setExpandedSection] = useState<"activities" | "steps" | "result" | null>("activities");
+  const [expandedSection, setExpandedSection] = useState<"activities" | "steps" | "result" | null>(null);
+  // Default to steps when there are steps but no activities
+  const defaultSection = task?.activities?.length ? "activities" : task?.steps?.length ? "steps" : null;
+  const activeSection = expandedSection ?? defaultSection;
 
   // Single polling effect — fetches immediately, then every 3s until terminal
   useEffect(() => {
@@ -205,6 +208,28 @@ export function TaskStatusPanel({ taskId, onStatusChange }: Props) {
       )}
 
       {/* Progress bar for running tasks */}
+      {isActive && task.steps.length > 0 && task.activities.length === 0 && (
+        <div className="px-4 py-2 border-b border-zinc-800">
+          <div className="flex items-center gap-2">
+            <div className="flex-1 h-1 bg-zinc-800 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-amber-500 rounded-full transition-all duration-500"
+                style={{
+                  width: `${Math.min(
+                    (task.steps.filter((s) => s.status === "completed").length /
+                      Math.max(task.steps.length, 1)) *
+                      100,
+                    95
+                  )}%`,
+                }}
+              />
+            </div>
+            <span className="text-[10px] text-zinc-500">
+              {task.steps.filter((s) => s.status === "completed").length}/{task.steps.length} steps
+            </span>
+          </div>
+        </div>
+      )}
       {isActive && task.activities.length > 0 && (
         <div className="px-4 py-2 border-b border-zinc-800">
           <div className="flex items-center gap-2">
@@ -235,8 +260,8 @@ export function TaskStatusPanel({ taskId, onStatusChange }: Props) {
           <CollapsibleSection
             title="Activities"
             count={task.activities.length}
-            expanded={expandedSection === "activities"}
-            onToggle={() => setExpandedSection(expandedSection === "activities" ? null : "activities")}
+            expanded={activeSection === "activities"}
+            onToggle={() => setExpandedSection(activeSection === "activities" ? null : "activities")}
           >
             <div className="space-y-1.5 px-4 pb-3">
               {task.activities.map((activity) => (
@@ -280,8 +305,8 @@ export function TaskStatusPanel({ taskId, onStatusChange }: Props) {
           <CollapsibleSection
             title="Recent Steps"
             count={task.steps.length}
-            expanded={expandedSection === "steps"}
-            onToggle={() => setExpandedSection(expandedSection === "steps" ? null : "steps")}
+            expanded={activeSection === "steps"}
+            onToggle={() => setExpandedSection(activeSection === "steps" ? null : "steps")}
           >
             <div className="space-y-1 px-4 pb-3 max-h-48 overflow-y-auto">
               {task.steps.slice(-10).map((step) => (
@@ -307,8 +332,8 @@ export function TaskStatusPanel({ taskId, onStatusChange }: Props) {
         {task.result && (
           <CollapsibleSection
             title="Result"
-            expanded={expandedSection === "result"}
-            onToggle={() => setExpandedSection(expandedSection === "result" ? null : "result")}
+            expanded={activeSection === "result"}
+            onToggle={() => setExpandedSection(activeSection === "result" ? null : "result")}
           >
             <div className="px-4 pb-3">
               <pre className="text-xs text-zinc-300 whitespace-pre-wrap bg-zinc-800/50 rounded p-3 max-h-64 overflow-y-auto font-mono leading-relaxed">
