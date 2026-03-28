@@ -36,6 +36,7 @@ interface TaskData {
 interface Props {
   taskId: string;
   onStatusChange?: (status: string) => void;
+  onRestart?: (taskId: string) => void;
 }
 
 const STATUS_CONFIG: Record<string, { color: string; bg: string; label: string }> = {
@@ -65,7 +66,7 @@ function isTaskStale(task: TaskData): boolean {
   return elapsed > STALE_THRESHOLD_MS;
 }
 
-export function TaskStatusPanel({ taskId, onStatusChange }: Props) {
+export function TaskStatusPanel({ taskId, onStatusChange, onRestart }: Props) {
   const [task, setTask] = useState<TaskData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -343,6 +344,18 @@ export function TaskStatusPanel({ taskId, onStatusChange }: Props) {
           </CollapsibleSection>
         )}
       </div>
+
+      {/* Retry button for failed/cancelled tasks */}
+      {(task.status === "failed" || task.status === "cancelled") && onRestart && (
+        <div className="px-4 py-3 border-t border-zinc-800">
+          <button
+            onClick={() => onRestart(taskId)}
+            className="w-full px-4 py-2 text-sm rounded-md bg-indigo-600 hover:bg-indigo-500 transition-colors font-medium"
+          >
+            Retry Task
+          </button>
+        </div>
+      )}
 
       {/* Timestamps */}
       <div className="px-4 py-2 border-t border-zinc-800 flex items-center gap-4 text-[10px] text-zinc-600">

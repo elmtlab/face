@@ -258,6 +258,26 @@ export async function POST(
     return NextResponse.json({ workflow, taskId: result.taskId });
   }
 
+  // ── Update task ID (used for restart) ────────────────────────
+  if (body.action === "update_task") {
+    if (workflow.phase !== "implementing") {
+      return NextResponse.json(
+        { error: "Task can only be updated during implementing phase" },
+        { status: 400 }
+      );
+    }
+    if (!body.taskId) {
+      return NextResponse.json(
+        { error: "taskId is required" },
+        { status: 400 }
+      );
+    }
+    workflow.taskId = body.taskId;
+    workflow.updatedAt = new Date().toISOString();
+    saveWorkflow(workflow);
+    return NextResponse.json({ workflow });
+  }
+
   // ── Mark workflow complete ─────────────────────────────────────
   if (body.action === "complete") {
     if (workflow.phase !== "implementing") {

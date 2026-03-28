@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import type { FaceTask } from "@/lib/tasks/types";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { RelativeTime } from "@/components/shared/RelativeTime";
@@ -17,9 +17,21 @@ const CATEGORY_META: Record<
   other: { label: "Other", color: "text-zinc-400", bgColor: "bg-zinc-800/30 border-zinc-700/20" },
 };
 
-export function TaskDetail({ task }: { task: FaceTask }) {
+export function TaskDetail({ task, onRestart }: { task: FaceTask; onRestart?: (taskId: string) => void }) {
   const [showRawSteps, setShowRawSteps] = useState(false);
+  const [restarting, setRestarting] = useState(false);
   const activities = task.activities ?? [];
+  const isRestartable = task.status === "failed" || task.status === "cancelled";
+
+  const handleRestart = useCallback(async () => {
+    if (!onRestart || restarting) return;
+    setRestarting(true);
+    try {
+      onRestart(task.id);
+    } finally {
+      setRestarting(false);
+    }
+  }, [onRestart, restarting, task.id]);
 
   const changes = activities.filter((a) => a.category === "write");
   const verifications = activities.filter((a) => a.category === "execute");
@@ -51,6 +63,25 @@ export function TaskDetail({ task }: { task: FaceTask }) {
           )}
         </p>
       </div>
+
+      {/* FAILED — restart option */}
+      {isRestartable && onRestart && (
+        <div className="rounded-xl bg-gradient-to-br from-red-950/40 to-rose-950/30 p-4 md:p-5 border border-red-900/30">
+          <p className="text-xs text-red-400 mb-2 font-semibold uppercase tracking-wider">
+            Task {task.status}
+          </p>
+          {task.result && (
+            <p className="text-sm text-zinc-400 mb-3 line-clamp-3">{task.result}</p>
+          )}
+          <button
+            onClick={handleRestart}
+            disabled={restarting}
+            className="px-4 py-2 text-sm rounded-md bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 transition-colors font-medium"
+          >
+            {restarting ? "Restarting..." : "Restart Task"}
+          </button>
+        </div>
+      )}
 
       {/* OUTCOME — concise bullet summary */}
       {task.status === "completed" && (
