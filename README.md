@@ -4,7 +4,18 @@
 
 The working reference point is tools like Claude Code: fast, agent-driven, terminal-native in spirit, but with a stronger visual interface for context, actions, history, and state.
 
-## Install
+## Quick Start
+
+```bash
+git clone https://github.com/anthropics/face.git
+cd face
+npm install
+npm run dev
+```
+
+Then open [http://localhost:3000](http://localhost:3000).
+
+## Install (Production CLI)
 
 ```bash
 ./install.sh
@@ -23,6 +34,16 @@ face logs     # Tail the server logs
 ```
 
 On first launch, FACE detects installed AI agents (Claude Code, Codex) and configures hooks to track task progress.
+
+## Development
+
+| Command | Description |
+|---------|-------------|
+| `npm install` | Install dependencies |
+| `npm run dev` | Start dev server ([http://localhost:3000](http://localhost:3000)) |
+| `npm run build` | Production build |
+| `npm run start` | Start production server |
+| `npm run lint` | Run linter |
 
 ## How It Works
 
