@@ -20,21 +20,36 @@ const runningTasks = globalForRunner.__faceRunningTasks;
  * Check for tasks on disk that claim to be "running" but have no tracked
  * process.  This happens after a server restart or crash — the in-memory
  * Map is empty but the JSON files still say "running".
+ *
+ * Skips tasks updated within the last 30 seconds to avoid killing tasks
+ * that were just spawned (race with module reload in dev mode).
  */
 export function cleanupOrphanedTasks(): void {
   const tasks = readAllTasks();
+  const now = Date.now();
+  const GRACE_PERIOD_MS = 30_000;
+
   for (const task of tasks) {
-    if (task.status === "running" && !runningTasks.has(task.id)) {
-      task.status = "failed";
-      task.result = "Task process was interrupted (server restart or crash)";
-      task.updatedAt = new Date().toISOString();
-      writeTask(task);
-    }
+    if (task.status !== "running") continue;
+    if (runningTasks.has(task.id)) continue;
+
+    const age = now - new Date(task.updatedAt).getTime();
+    if (age < GRACE_PERIOD_MS) continue;
+
+    task.status = "failed";
+    task.result = "Task process was interrupted (server restart or crash)";
+    task.updatedAt = new Date().toISOString();
+    writeTask(task);
   }
 }
 
-// Run cleanup on module load so orphaned tasks are caught on server start
-cleanupOrphanedTasks();
+// Track whether cleanup has already run in this process to avoid
+// re-running on hot module reload in dev mode.
+const globalCleanup = globalThis as unknown as { __faceCleanupDone?: boolean };
+if (!globalCleanup.__faceCleanupDone) {
+  globalCleanup.__faceCleanupDone = true;
+  cleanupOrphanedTasks();
+}
 
 export function generateTaskId(): string {
   return `task-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
