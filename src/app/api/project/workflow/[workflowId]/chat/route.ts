@@ -278,6 +278,21 @@ export async function POST(
     return NextResponse.json({ workflow });
   }
 
+  // ── Reopen workflow (failed task → back to implementing) ──────
+  if (body.action === "reopen") {
+    if (workflow.phase !== "done") {
+      return NextResponse.json(
+        { error: "Only done workflows can be reopened" },
+        { status: 400 }
+      );
+    }
+    workflow.phase = "implementing";
+    workflow.taskId = body.taskId ?? workflow.taskId;
+    workflow.updatedAt = new Date().toISOString();
+    saveWorkflow(workflow);
+    return NextResponse.json({ workflow });
+  }
+
   // ── Mark workflow complete ─────────────────────────────────────
   if (body.action === "complete") {
     if (workflow.phase !== "implementing") {

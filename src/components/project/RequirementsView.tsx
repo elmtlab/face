@@ -48,14 +48,25 @@ const PHASES: { key: Phase; label: string }[] = [
 ];
 
 
-const PHASE_CONFIG: Record<Phase, { label: string; color: string; icon: string }> = {
+const PHASE_CONFIG: Record<Phase | "failed", { label: string; color: string; icon: string }> = {
   gathering: { label: "Gathering", color: "bg-blue-600/20 text-blue-400 border-blue-600/30", icon: "?" },
   planning: { label: "Planning", color: "bg-purple-600/20 text-purple-400 border-purple-600/30", icon: "~" },
   review: { label: "Review", color: "bg-amber-600/20 text-amber-400 border-amber-600/30", icon: "!" },
   approved: { label: "Approved", color: "bg-emerald-600/20 text-emerald-400 border-emerald-600/30", icon: "+" },
   implementing: { label: "Implementing", color: "bg-orange-600/20 text-orange-400 border-orange-600/30", icon: "*" },
   done: { label: "Done", color: "bg-zinc-700/50 text-zinc-300 border-zinc-600/30", icon: "v" },
+  failed: { label: "Failed", color: "bg-red-600/20 text-red-400 border-red-600/30", icon: "x" },
 };
+
+function getEffectivePhase(w: WorkflowState, taskStatuses: Record<string, TaskInfo>): Phase | "failed" {
+  if (w.phase === "done" && w.taskId) {
+    const task = taskStatuses[w.taskId];
+    if (!task || task.status === "failed" || task.status === "cancelled") {
+      return "failed";
+    }
+  }
+  return w.phase;
+}
 
 interface Props {
   onSelectWorkflow: (id: string) => void;
@@ -67,6 +78,7 @@ export function RequirementsView({ onSelectWorkflow, onNewWorkflow }: Props) {
   const [loading, setLoading] = useState(true);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [taskStatuses, setTaskStatuses] = useState<Record<string, TaskInfo>>({});
+  const [restartingId, setRestartingId] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchWorkflows = () => {
@@ -116,6 +128,37 @@ export function RequirementsView({ onSelectWorkflow, onNewWorkflow }: Props) {
     });
   };
 
+  const refreshWorkflows = () => {
+    fetch("/api/project/workflow")
+      .then((r) => r.json())
+      .then((d) => setWorkflows(d.workflows ?? []));
+  };
+
+  const handleRestart = async (w: WorkflowState) => {
+    if (!w.taskId || restartingId) return;
+    setRestartingId(w.id);
+    try {
+      // 1. Restart the failed task
+      const restartRes = await fetch(`/api/tasks/${w.taskId}/restart`, { method: "POST" });
+      const restartData = await restartRes.json();
+      if (!restartData.taskId) return;
+
+      // 2. Reopen the workflow with the new task ID
+      await fetch(`/api/project/workflow/${w.id}/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "reopen", taskId: restartData.taskId }),
+      });
+
+      // 3. Refresh the view
+      refreshWorkflows();
+    } catch (err) {
+      console.error("Failed to restart task:", err);
+    } finally {
+      setRestartingId(null);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full text-zinc-500 animate-pulse">
@@ -153,12 +196,16 @@ export function RequirementsView({ onSelectWorkflow, onNewWorkflow }: Props) {
           <div className="space-y-2">
             {workflows.map((w) => {
               const isExpanded = expandedIds.has(w.id);
-              const cfg = PHASE_CONFIG[w.phase];
+              const effectivePhase = getEffectivePhase(w, taskStatuses);
+              const failed = effectivePhase === "failed";
+              const cfg = PHASE_CONFIG[effectivePhase];
               const title =
                 w.generatedStory?.title ??
                 w.messages.find((m) => m.role === "user")?.content.slice(0, 80) ??
                 "Untitled requirement";
-              const currentPhaseIdx = PHASES.findIndex((p) => p.key === w.phase);
+              // For failed tasks, show implementing as the current phase (not done)
+              const displayPhase = failed ? "implementing" : w.phase;
+              const currentPhaseIdx = PHASES.findIndex((p) => p.key === displayPhase);
 
               return (
                 <div key={w.id} className="rounded-lg border border-zinc-800 overflow-hidden">
@@ -198,6 +245,7 @@ export function RequirementsView({ onSelectWorkflow, onNewWorkflow }: Props) {
                         {PHASES.map((phase, i) => {
                           const isDone = i < currentPhaseIdx;
                           const isCurrent = i === currentPhaseIdx;
+                          const isFailed = failed && isCurrent && phase.key === "implementing";
                           const phaseCfg = PHASE_CONFIG[phase.key];
 
                           // Build sub-step detail
@@ -221,15 +269,17 @@ export function RequirementsView({ onSelectWorkflow, onNewWorkflow }: Props) {
                               {/* Connector line + status dot */}
                               <div className="relative flex flex-col items-center w-4 shrink-0">
                                 {i > 0 && (
-                                  <div className={`absolute -top-3 w-px h-3 ${isDone || isCurrent ? "bg-emerald-600/40" : "bg-zinc-700/50"}`} />
+                                  <div className={`absolute -top-3 w-px h-3 ${isDone || isCurrent ? (isFailed ? "bg-red-600/40" : "bg-emerald-600/40") : "bg-zinc-700/50"}`} />
                                 )}
                                 <div
                                   className={`w-2.5 h-2.5 rounded-full border ${
-                                    isDone
-                                      ? "bg-emerald-600 border-emerald-500"
-                                      : isCurrent
-                                        ? "bg-indigo-600 border-indigo-500 ring-2 ring-indigo-600/30"
-                                        : "bg-zinc-800 border-zinc-600"
+                                    isFailed
+                                      ? "bg-red-600 border-red-500 ring-2 ring-red-600/30"
+                                      : isDone
+                                        ? "bg-emerald-600 border-emerald-500"
+                                        : isCurrent
+                                          ? "bg-indigo-600 border-indigo-500 ring-2 ring-indigo-600/30"
+                                          : "bg-zinc-800 border-zinc-600"
                                   }`}
                                 />
                                 {i < PHASES.length - 1 && (
@@ -240,18 +290,25 @@ export function RequirementsView({ onSelectWorkflow, onNewWorkflow }: Props) {
                               {/* Label */}
                               <span
                                 className={`text-xs ${
-                                  isDone
-                                    ? "text-zinc-500 line-through"
-                                    : isCurrent
-                                      ? "text-zinc-200 font-medium"
-                                      : "text-zinc-600"
+                                  isFailed
+                                    ? "text-red-400 font-medium"
+                                    : isDone
+                                      ? "text-zinc-500 line-through"
+                                      : isCurrent
+                                        ? "text-zinc-200 font-medium"
+                                        : "text-zinc-600"
                                 }`}
                               >
                                 {phase.label}
                               </span>
 
                               {/* Status badge for current */}
-                              {isCurrent && (
+                              {isFailed && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded border bg-red-600/20 text-red-400 border-red-600/30">
+                                  Failed
+                                </span>
+                              )}
+                              {isCurrent && !isFailed && (
                                 <span className={`text-[10px] px-1.5 py-0.5 rounded border ${phaseCfg.color}`}>
                                   In Progress
                                 </span>
@@ -284,12 +341,23 @@ export function RequirementsView({ onSelectWorkflow, onNewWorkflow }: Props) {
                             </a>
                           )}
                         </div>
-                        <button
-                          onClick={() => onSelectWorkflow(w.id)}
-                          className="text-[10px] px-2 py-1 rounded border border-zinc-700 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors"
-                        >
-                          Open Workflow →
-                        </button>
+                        <div className="flex items-center gap-2">
+                          {failed && w.taskId && (
+                            <button
+                              onClick={() => handleRestart(w)}
+                              disabled={restartingId === w.id}
+                              className="text-[10px] px-2 py-1 rounded bg-indigo-600 hover:bg-indigo-500 text-white transition-colors disabled:opacity-50"
+                            >
+                              {restartingId === w.id ? "Restarting..." : "Restart Task"}
+                            </button>
+                          )}
+                          <button
+                            onClick={() => onSelectWorkflow(w.id)}
+                            className="text-[10px] px-2 py-1 rounded border border-zinc-700 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors"
+                          >
+                            Open Workflow →
+                          </button>
+                        </div>
                       </div>
                     </div>
                   )}
