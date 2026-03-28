@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "security-scan": "tsx src/scripts/security-scan.ts"
   },
   "dependencies": {
     "better-sqlite3": "^12.8.0",
