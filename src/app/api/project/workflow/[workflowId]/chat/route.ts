@@ -15,6 +15,7 @@ import { buildImplementationPrompt } from "@/lib/project/workflow";
  * POST /api/project/workflow/:id/chat
  *
  * Body: { message: string }               — user sends a message
+ *   or: { action: "ready_to_plan" }       — manually advance from gathering to planning
  *   or: { action: "generate_story" }      — ask AI to produce the story
  *   or: { action: "approve", role: "pm"|"eng" }
  *   or: { action: "reject", role: "pm"|"eng" }
@@ -71,6 +72,20 @@ export async function POST(
     return NextResponse.json({ workflow, newMessage: assistantMsg });
   }
 
+  // ── Manually advance to planning ─────────────────────────────
+  if (body.action === "ready_to_plan") {
+    if (workflow.phase !== "gathering") {
+      return NextResponse.json(
+        { error: "Already past gathering phase" },
+        { status: 400 }
+      );
+    }
+    workflow.phase = "planning";
+    workflow.updatedAt = new Date().toISOString();
+    saveWorkflow(workflow);
+    return NextResponse.json({ workflow });
+  }
+
   // ── Generate story ────────────────────────────────────────────
   if (body.action === "generate_story") {
     if (workflow.phase !== "planning") {
@@ -104,6 +119,12 @@ export async function POST(
 
   // ── Create issue in project provider ──────────────────────────
   if (body.action === "create_issue") {
+    if (workflow.phase !== "review" && workflow.phase !== "approved") {
+      return NextResponse.json(
+        { error: "Issues can only be created during review or approved phases" },
+        { status: 400 }
+      );
+    }
     if (!workflow.generatedStory) {
       return NextResponse.json({ error: "No story generated yet" }, { status: 400 });
     }
@@ -239,6 +260,12 @@ export async function POST(
 
   // ── Mark workflow complete ─────────────────────────────────────
   if (body.action === "complete") {
+    if (workflow.phase !== "implementing") {
+      return NextResponse.json(
+        { error: "Only implementing workflows can be marked complete" },
+        { status: 400 }
+      );
+    }
     workflow.phase = "done";
     workflow.updatedAt = new Date().toISOString();
     saveWorkflow(workflow);

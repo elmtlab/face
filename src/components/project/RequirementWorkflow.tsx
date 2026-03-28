@@ -286,6 +286,18 @@ export function RequirementWorkflow({ workflowId, onClose, onCreated }: Props) {
             <p className="text-xs text-red-400 mb-2 bg-red-600/10 px-3 py-1.5 rounded">{error}</p>
           )}
 
+          {workflow.phase === "gathering" && workflow.messages.length >= 2 && (
+            <div className="flex justify-center mb-3">
+              <button
+                onClick={() => doAction("ready_to_plan")}
+                disabled={loading}
+                className="px-4 py-2 text-sm rounded-md border border-zinc-600 text-zinc-300 hover:bg-zinc-800 disabled:opacity-50 transition-colors"
+              >
+                Ready to Plan →
+              </button>
+            </div>
+          )}
+
           {workflow.phase === "planning" && (
             <div className="flex justify-center mb-3">
               <button
