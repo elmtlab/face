@@ -107,7 +107,7 @@ export function RequirementsView({ onSelectWorkflow, onNewWorkflow }: Props) {
       taskIds.map((id) =>
         fetch(`/api/tasks/${id}`)
           .then((r) => r.json())
-          .then((d) => d.task as TaskInfo | undefined)
+          .then((d) => (d.id ? d : d.task) as TaskInfo | undefined)
           .catch(() => undefined)
       )
     ).then((tasks) => {
