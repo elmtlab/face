@@ -3,6 +3,7 @@ import path from "path";
 import os from "os";
 import { readConfig, writeConfig } from "../tasks/file-manager";
 import { detectAllAgents } from "./detect";
+import { FACE_BASE_URL } from "../constants";
 
 const CLAUDE_SETTINGS_PATH = path.join(
   os.homedir(),
@@ -10,7 +11,7 @@ const CLAUDE_SETTINGS_PATH = path.join(
   "settings.json"
 );
 
-const FACE_HOOK_URL = "http://localhost:3456/api/hooks/task-update";
+const FACE_HOOK_URL = `${FACE_BASE_URL}/api/hooks/task-update`;
 
 // We tag our hooks with this command prefix so we can find/remove them later
 const FACE_HOOK_TAG = "# face-hook";

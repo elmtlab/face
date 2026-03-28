@@ -1,4 +1,5 @@
 import { getActiveProvider } from "@/lib/project/manager";
+import { FACE_BASE_URL } from "@/lib/constants";
 import type { FaceTask } from "./types";
 
 /**
@@ -70,7 +71,7 @@ function buildCommentBody(task: FaceTask): string {
   }
 
   lines.push("");
-  lines.push(`[View full task details in FACE](http://localhost:3000/project?task=${task.id})`);
+  lines.push(`[View full task details in FACE](${FACE_BASE_URL}/project?task=${task.id})`);
 
   if (task.summary) {
     lines.push("");
