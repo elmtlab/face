@@ -4,6 +4,8 @@ import { writeTask, readAllTasks } from "./file-manager";
 import { eventBus } from "../events/bus";
 import type { FaceTask } from "./types";
 import { postCompletionComment } from "./github-notify";
+export { describeToolUse } from "./describe-tool";
+import { describeToolUse } from "./describe-tool";
 
 // Track running processes globally
 const globalForRunner = globalThis as unknown as {
@@ -96,32 +98,6 @@ export async function submitTask(
   }
 
   return { taskId };
-}
-
-/** Build a human-readable description from a tool_use content block. */
-function describeToolUse(name: string, input: Record<string, unknown>): string {
-  const file =
-    (input.file_path as string) ??
-    (input.path as string) ??
-    (input.filename as string) ??
-    null;
-  const short = file ? file.split("/").pop() : null;
-
-  switch (name) {
-    case "Read":
-      return short ? `Reading ${short}` : "Reading file";
-    case "Write":
-      return short ? `Writing ${short}` : "Writing file";
-    case "Edit":
-      return short ? `Editing ${short}` : "Editing file";
-    case "Bash":
-      return "Running command";
-    case "Grep":
-    case "Glob":
-      return "Searching files";
-    default:
-      return name;
-  }
 }
 
 function spawnClaudeCode(task: FaceTask, binaryPath: string): void {
