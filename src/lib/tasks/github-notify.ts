@@ -30,8 +30,8 @@ export async function postCompletionComment(task: FaceTask): Promise<void> {
     // Update issue status when task completed successfully
     if (task.status === "completed") {
       try {
-        await provider.updateIssue(String(task.linkedIssue), { status: "in_review" });
-        console.log(`[face] Updated issue #${task.linkedIssue} status to in_review`);
+        await provider.updateIssue(String(task.linkedIssue), { status: "done" });
+        console.log(`[face] Updated issue #${task.linkedIssue} status to done`);
       } catch (err) {
         console.error(`[face] Failed to update issue #${task.linkedIssue} status:`, err);
       }

@@ -304,6 +304,20 @@ export async function POST(
     workflow.phase = "done";
     workflow.updatedAt = new Date().toISOString();
     saveWorkflow(workflow);
+
+    // Close the linked GitHub issue
+    if (workflow.issueId) {
+      const provider = await getActiveProvider();
+      if (provider) {
+        try {
+          await provider.updateIssue(workflow.issueId, { status: "done" });
+          await provider.addComment(workflow.issueId, "Implementation completed. Closing issue.");
+        } catch {
+          // best-effort
+        }
+      }
+    }
+
     return NextResponse.json({ workflow });
   }
 
