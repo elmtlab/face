@@ -13,7 +13,7 @@ bun install
 bun dev
 ```
 
-Then open [http://localhost:3000](http://localhost:3000).
+Then open [http://localhost:3456](http://localhost:3456).
 
 ## Install (Production CLI)
 
@@ -40,7 +40,7 @@ On first launch, FACE detects installed AI agents (Claude Code, Codex) and confi
 | Command | Description |
 |---------|-------------|
 | `bun install` | Install dependencies |
-| `bun dev` | Start dev server ([http://localhost:3000](http://localhost:3000)) |
+| `bun dev` | Start dev server ([http://localhost:3456](http://localhost:3456)) |
 | `bun run build` | Production build |
 | `bun start` | Start production server |
 | `bun run lint` | Run linter |
