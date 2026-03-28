@@ -270,7 +270,13 @@ export function RequirementWorkflow({ workflowId, onClose, onCreated }: Props) {
 
         {/* Implementing */}
         {workflow.phase === "implementing" && (
-          <ImplementingView workflow={workflow} onDone={markDone} />
+          <ImplementingView
+            workflow={workflow}
+            onDone={markDone}
+            onTaskRestarted={(newTaskId) => {
+              setWorkflow((w) => w ? { ...w, taskId: newTaskId, updatedAt: new Date().toISOString() } : null);
+            }}
+          />
         )}
 
         {/* Done */}
@@ -633,22 +639,52 @@ function ApprovedView({
 function ImplementingView({
   workflow,
   onDone,
+  onTaskRestarted,
 }: {
   workflow: WorkflowState;
   onDone: () => void;
+  onTaskRestarted: (newTaskId: string) => void;
 }) {
+  const [restarting, setRestarting] = useState(false);
+
   const handleStatusChange = useCallback(
     (status: string) => {
-      if (status === "completed" || status === "failed") onDone();
+      // Only auto-advance on success, not on failure
+      if (status === "completed") onDone();
     },
     [onDone]
+  );
+
+  const handleRestart = useCallback(
+    async (taskId: string) => {
+      if (restarting || !workflow.id) return;
+      setRestarting(true);
+      try {
+        const res = await fetch(`/api/tasks/${taskId}/restart`, { method: "POST" });
+        const data = await res.json();
+        if (!data.taskId) return;
+
+        await fetch(`/api/project/workflow/${workflow.id}/chat`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "update_task", taskId: data.taskId }),
+        });
+
+        onTaskRestarted(data.taskId);
+      } catch (err) {
+        console.error("Failed to restart implementation:", err);
+      } finally {
+        setRestarting(false);
+      }
+    },
+    [restarting, workflow.id, onTaskRestarted]
   );
 
   return (
     <div className="p-6 space-y-4 max-w-2xl mx-auto">
       <div className="flex items-center gap-3">
         <div className="w-10 h-10 rounded-full bg-amber-600/20 flex items-center justify-center animate-pulse shrink-0">
-          <span className="text-lg">⚡</span>
+          <span className="text-lg">&#x26A1;</span>
         </div>
         <div>
           <h3 className="text-base font-semibold text-zinc-200">Implementation In Progress</h3>
@@ -663,12 +699,20 @@ function ImplementingView({
           rel="noopener noreferrer"
           className="block text-xs text-indigo-400 hover:text-indigo-300"
         >
-          GitHub Issue: {workflow.issueUrl} ↗
+          GitHub Issue: {workflow.issueUrl} &#x2197;
         </a>
       )}
 
       {workflow.taskId && (
-        <TaskStatusPanel taskId={workflow.taskId} onStatusChange={handleStatusChange} />
+        <TaskStatusPanel
+          taskId={workflow.taskId}
+          onStatusChange={handleStatusChange}
+          onRestart={handleRestart}
+        />
+      )}
+
+      {restarting && (
+        <p className="text-xs text-indigo-400 animate-pulse">Restarting task...</p>
       )}
     </div>
   );

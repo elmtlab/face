@@ -39,6 +39,19 @@ export function TaskList() {
     }
   }
 
+  async function handleRestart(taskId: string) {
+    try {
+      const res = await fetch(`/api/tasks/${taskId}/restart`, { method: "POST" });
+      const data = await res.json();
+      if (data.taskId) {
+        setSelectedId(data.taskId);
+        loadTasks();
+      }
+    } catch (err) {
+      console.error("Failed to restart task:", err);
+    }
+  }
+
   const selectedTask = tasks.find((t) => t.id === selectedId) ?? null;
 
   return (
@@ -83,6 +96,7 @@ export function TaskList() {
                 selected={task.id === selectedId}
                 onSelectAction={setSelectedId}
                 onDeleteAction={handleDelete}
+                onRestartAction={handleRestart}
               />
             ))
           )}
@@ -92,7 +106,7 @@ export function TaskList() {
       {/* Detail column */}
       <div className="flex-1 min-w-0 min-h-0 overflow-y-auto">
         {selectedTask ? (
-          <TaskDetail task={selectedTask} />
+          <TaskDetail task={selectedTask} onRestart={handleRestart} />
         ) : (
           <div className="flex items-center justify-center h-full text-zinc-600 text-sm">
             Select a task to view details
