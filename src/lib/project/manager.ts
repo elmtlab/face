@@ -5,10 +5,12 @@ import type { ProjectProvider, ProjectProviderConfig } from "./types";
 import { createProvider, registerProvider } from "./registry";
 import { GitHubProvider } from "./providers/github";
 import { LinearProvider } from "./providers/linear";
+import { JiraProvider } from "./providers/jira";
 
 // Register built-in providers
 registerProvider("github", () => new GitHubProvider());
 registerProvider("linear", () => new LinearProvider());
+registerProvider("jira", () => new JiraProvider());
 
 const CONFIG_DIR = join(homedir(), ".face");
 const CONFIG_FILE = join(CONFIG_DIR, "project-providers.json");
