@@ -57,10 +57,19 @@ const CATEGORY_ICONS: Record<string, string> = {
 
 const TERMINAL_STATUSES = new Set(["completed", "failed", "cancelled"]);
 
+const STALE_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
+
+function isTaskStale(task: TaskData): boolean {
+  if (task.status !== "running") return false;
+  const elapsed = Date.now() - new Date(task.updatedAt).getTime();
+  return elapsed > STALE_THRESHOLD_MS;
+}
+
 export function TaskStatusPanel({ taskId, onStatusChange }: Props) {
   const [task, setTask] = useState<TaskData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [markingFailed, setMarkingFailed] = useState(false);
   const [expandedSection, setExpandedSection] = useState<"activities" | "steps" | "result" | null>("activities");
 
   // Single polling effect — fetches immediately, then every 3s until terminal
@@ -138,6 +147,23 @@ export function TaskStatusPanel({ taskId, onStatusChange }: Props) {
 
   const statusCfg = STATUS_CONFIG[task.status] ?? STATUS_CONFIG.pending;
   const isActive = task.status === "running" || task.status === "pending";
+  const stale = isTaskStale(task);
+
+  const handleMarkFailed = async () => {
+    setMarkingFailed(true);
+    try {
+      const res = await fetch(`/api/tasks/${taskId}`, { method: "PATCH" });
+      if (res.ok) {
+        const updated = await res.json();
+        setTask(updated);
+        onStatusChange?.("failed");
+      }
+    } catch {
+      // ignore — next poll will pick up the change
+    } finally {
+      setMarkingFailed(false);
+    }
+  };
 
   return (
     <div className="bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden">
@@ -157,6 +183,24 @@ export function TaskStatusPanel({ taskId, onStatusChange }: Props) {
       {task.summary && (
         <div className="px-4 py-3 border-b border-zinc-800">
           <p className="text-sm text-zinc-300">{task.summary}</p>
+        </div>
+      )}
+
+      {/* Stale task warning */}
+      {stale && (
+        <div className="px-4 py-3 border-b border-zinc-800 bg-amber-950/30">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs text-amber-400">
+              Task may be stale — no updates received for over 5 minutes.
+            </p>
+            <button
+              onClick={handleMarkFailed}
+              disabled={markingFailed}
+              className="shrink-0 text-[11px] px-2.5 py-1 rounded bg-red-600/20 text-red-400 hover:bg-red-600/30 transition-colors disabled:opacity-50"
+            >
+              {markingFailed ? "Marking..." : "Mark as failed"}
+            </button>
+          </div>
         </div>
       )}
 

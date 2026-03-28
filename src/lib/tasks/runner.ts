@@ -1,6 +1,6 @@
 import { spawn, ChildProcess } from "child_process";
 import { readConfig } from "./file-manager";
-import { writeTask } from "./file-manager";
+import { writeTask, readAllTasks } from "./file-manager";
 import { eventBus } from "../events/bus";
 import type { FaceTask } from "./types";
 import { postCompletionComment } from "./github-notify";
@@ -13,6 +13,26 @@ if (!globalForRunner.__faceRunningTasks) {
   globalForRunner.__faceRunningTasks = new Map();
 }
 const runningTasks = globalForRunner.__faceRunningTasks;
+
+/**
+ * Check for tasks on disk that claim to be "running" but have no tracked
+ * process.  This happens after a server restart or crash — the in-memory
+ * Map is empty but the JSON files still say "running".
+ */
+export function cleanupOrphanedTasks(): void {
+  const tasks = readAllTasks();
+  for (const task of tasks) {
+    if (task.status === "running" && !runningTasks.has(task.id)) {
+      task.status = "failed";
+      task.result = "Task process was interrupted (server restart or crash)";
+      task.updatedAt = new Date().toISOString();
+      writeTask(task);
+    }
+  }
+}
+
+// Run cleanup on module load so orphaned tasks are caught on server start
+cleanupOrphanedTasks();
 
 export function generateTaskId(): string {
   return `task-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
