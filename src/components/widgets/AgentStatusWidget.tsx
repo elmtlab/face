@@ -24,11 +24,18 @@ export function AgentStatusWidget() {
   }, []);
 
   if (loading) {
-    return <p className="text-xs text-zinc-500">Checking agents...</p>;
+    return (
+      <div className="flex items-center gap-2 py-4 justify-center">
+        <svg className="h-3.5 w-3.5 animate-spin text-zinc-500" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2">
+          <circle cx="8" cy="8" r="6" strokeOpacity="0.3" /><path d="M8 2a6 6 0 014.24 1.76" />
+        </svg>
+        <p className="text-xs text-zinc-500">Checking agents...</p>
+      </div>
+    );
   }
 
   if (agents.length === 0) {
-    return <p className="text-xs text-zinc-500">No agents detected.</p>;
+    return <div className="py-4 text-center"><p className="text-xs text-zinc-500">No agents detected.</p></div>;
   }
 
   return (

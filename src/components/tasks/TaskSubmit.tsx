@@ -9,8 +9,14 @@ interface Agent {
   configured: boolean;
 }
 
-export function TaskSubmit({ onSubmitted }: { onSubmitted?: () => void }) {
-  const [prompt, setPrompt] = useState("");
+export function TaskSubmit({
+  onSubmitted,
+  initialPrompt = "",
+}: {
+  onSubmitted?: () => void;
+  initialPrompt?: string;
+}) {
+  const [prompt, setPrompt] = useState(initialPrompt);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [selectedAgent, setSelectedAgent] = useState<string>("");
   const [submitting, setSubmitting] = useState(false);

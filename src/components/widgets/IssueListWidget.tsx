@@ -31,14 +31,23 @@ export function IssueListWidget({ filterLabel }: IssueListWidgetProps) {
   }, [filterLabel]);
 
   if (loading) {
-    return <p className="text-xs text-zinc-500">Loading issues...</p>;
+    return (
+      <div className="flex items-center gap-2 py-4 justify-center">
+        <svg className="h-3.5 w-3.5 animate-spin text-zinc-500" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2">
+          <circle cx="8" cy="8" r="6" strokeOpacity="0.3" /><path d="M8 2a6 6 0 014.24 1.76" />
+        </svg>
+        <p className="text-xs text-zinc-500">Loading issues...</p>
+      </div>
+    );
   }
 
   if (issues.length === 0) {
     return (
-      <p className="text-xs text-zinc-500">
-        {filterLabel ? `No issues with label "${filterLabel}"` : "No issues found"}
-      </p>
+      <div className="py-4 text-center">
+        <p className="text-xs text-zinc-500">
+          {filterLabel ? `No issues with label "${filterLabel}"` : "No issues found"}
+        </p>
+      </div>
     );
   }
 
