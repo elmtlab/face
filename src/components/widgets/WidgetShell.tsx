@@ -25,7 +25,7 @@ export function WidgetShell({ title, size, children }: WidgetShellProps) {
     <div
       className={`${SIZE_CLASSES[size]} rounded-xl border border-zinc-800 bg-zinc-900/50 p-4`}
     >
-      <h3 className="mb-3 text-sm font-medium text-zinc-400">{title}</h3>
+      <h3 className="mb-3 text-xs font-medium uppercase tracking-wider text-zinc-500">{title}</h3>
       <div className="min-h-0">{children}</div>
     </div>
   );

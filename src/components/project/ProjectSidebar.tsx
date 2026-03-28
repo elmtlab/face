@@ -23,7 +23,7 @@ const NAV_ITEMS: { key: ViewMode; label: string; icon: string }[] = [
 
 export function ProjectSidebar({ activeView, onViewChange, onSelectWorkflow, onRefresh, refreshKey }: Props) {
   return (
-    <aside className="w-56 border-r border-zinc-800 bg-zinc-900 flex flex-col">
+    <aside className="w-full md:w-56 h-full border-r border-zinc-800 bg-zinc-900 flex flex-col">
       <div className="p-4 border-b border-zinc-800">
         <a href="/" className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors">
           ← FACE Dashboard
