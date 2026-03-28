@@ -281,7 +281,16 @@ export function RequirementWorkflow({ workflowId, onClose, onCreated }: Props) {
 
         {/* Done */}
         {workflow.phase === "done" && (
-          <DoneView workflow={workflow} onClose={onClose} />
+          <DoneView
+            workflow={workflow}
+            onClose={onClose}
+            onReopen={(newTaskId) => {
+              setWorkflow((w) =>
+                w ? { ...w, phase: "implementing", taskId: newTaskId, updatedAt: new Date().toISOString() } : null
+              );
+              onCreated();
+            }}
+          />
         )}
       </div>
 
@@ -718,16 +727,70 @@ function ImplementingView({
   );
 }
 
-function DoneView({ workflow, onClose }: { workflow: WorkflowState; onClose: () => void }) {
+function DoneView({
+  workflow,
+  onClose,
+  onReopen,
+}: {
+  workflow: WorkflowState;
+  onClose: () => void;
+  onReopen: (newTaskId: string) => void;
+}) {
+  const [taskFailed, setTaskFailed] = useState(false);
+  const [restarting, setRestarting] = useState(false);
+
+  const handleStatusChange = useCallback((status: string) => {
+    if (status === "failed" || status === "cancelled") {
+      setTaskFailed(true);
+    }
+  }, []);
+
+  const handleRestart = useCallback(
+    async (taskId: string) => {
+      if (restarting || !workflow.id) return;
+      setRestarting(true);
+      try {
+        // 1. Restart the task
+        const res = await fetch(`/api/tasks/${taskId}/restart`, { method: "POST" });
+        const data = await res.json();
+        if (!data.taskId) return;
+
+        // 2. Reopen the workflow
+        await fetch(`/api/project/workflow/${workflow.id}/chat`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "reopen", taskId: data.taskId }),
+        });
+
+        onReopen(data.taskId);
+      } catch (err) {
+        console.error("Failed to restart implementation:", err);
+      } finally {
+        setRestarting(false);
+      }
+    },
+    [restarting, workflow.id, onReopen]
+  );
+
   return (
     <div className="p-6 space-y-4 max-w-2xl mx-auto">
       <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-full bg-emerald-600/20 flex items-center justify-center shrink-0">
-          <span className="text-lg">✓</span>
+        <div
+          className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${
+            taskFailed ? "bg-red-600/20" : "bg-emerald-600/20"
+          }`}
+        >
+          <span className="text-lg">{taskFailed ? "!" : "✓"}</span>
         </div>
         <div>
-          <h3 className="text-base font-semibold text-zinc-200">Implementation Complete</h3>
-          <p className="text-xs text-zinc-500">The AI agent has finished working on this story</p>
+          <h3 className="text-base font-semibold text-zinc-200">
+            {taskFailed ? "Implementation Failed" : "Implementation Complete"}
+          </h3>
+          <p className="text-xs text-zinc-500">
+            {taskFailed
+              ? "The AI agent encountered an error while working on this story"
+              : "The AI agent has finished working on this story"}
+          </p>
         </div>
       </div>
 
@@ -743,15 +806,36 @@ function DoneView({ workflow, onClose }: { workflow: WorkflowState; onClose: () 
       )}
 
       {workflow.taskId && (
-        <TaskStatusPanel taskId={workflow.taskId} />
+        <TaskStatusPanel
+          taskId={workflow.taskId}
+          onStatusChange={handleStatusChange}
+          onRestart={handleRestart}
+        />
+      )}
+
+      {restarting && (
+        <p className="text-xs text-indigo-400 animate-pulse">Restarting task...</p>
       )}
 
       <div className="flex gap-3 pt-2">
+        {taskFailed && workflow.taskId && (
+          <button
+            onClick={() => handleRestart(workflow.taskId!)}
+            disabled={restarting}
+            className="px-4 py-2 text-sm rounded-md bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 transition-colors font-medium"
+          >
+            {restarting ? "Restarting..." : "Retry Implementation"}
+          </button>
+        )}
         <button
           onClick={onClose}
-          className="px-4 py-2 text-sm rounded-md bg-indigo-600 hover:bg-indigo-500"
+          className={`px-4 py-2 text-sm rounded-md ${
+            taskFailed
+              ? "border border-zinc-700 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800"
+              : "bg-indigo-600 hover:bg-indigo-500"
+          } transition-colors`}
         >
-          Done
+          {taskFailed ? "Close" : "Done"}
         </button>
       </div>
     </div>
