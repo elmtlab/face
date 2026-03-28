@@ -104,6 +104,7 @@ function spawnClaudeCode(task: FaceTask, binaryPath: string): void {
   const args = [
     "-p",
     task.prompt,
+    "--verbose",
     "--output-format",
     "stream-json",
   ];
