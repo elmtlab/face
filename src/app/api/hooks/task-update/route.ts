@@ -191,8 +191,8 @@ function buildStepDescription(
   }
 
   if (t === "bash") {
-    const cmd = String(input.command ?? "").trim();
-    return cmd.slice(0, 120) || "Run command";
+    const cmd = String(input.command ?? input.description ?? "").trim();
+    return cmd.slice(0, 120) || "Running command";
   }
 
   if (t === "glob") {
