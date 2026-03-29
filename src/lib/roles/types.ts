@@ -6,6 +6,19 @@
  * route and view from configuration, not hardcoded pages.
  */
 
+// ── Sidebar navigation ───────────────────────────────────────────
+
+export interface SidebarLink {
+  /** Unique view key used in query params (e.g. "board", "issues") */
+  key: string;
+  /** Display label */
+  label: string;
+  /** Text icon character */
+  icon: string;
+  /** Widgets rendered when this view is active */
+  widgets: WidgetConfig[];
+}
+
 // ── Widget types (composable dashboard building blocks) ───────────
 
 export type WidgetSize = "small" | "medium" | "large" | "full";
@@ -66,6 +79,8 @@ export interface RoleDefinition {
   aiBehavior: AIBehaviorProfile;
   /** Ordered list of widgets that compose this role's dashboard */
   widgets: WidgetConfig[];
+  /** Sidebar navigation links — each maps to a focused widget view */
+  sidebarLinks: SidebarLink[];
   /** Maps to a UserRole value for backward compat with adaptive system */
   userRole: string;
 }

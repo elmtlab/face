@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import { getRoleDefinition, getRoleSlugs } from "@/lib/roles/registry";
 import { RoleDashboard } from "@/components/widgets/RoleDashboard";
@@ -25,5 +26,9 @@ export default async function RolePage({ params }: RolePageProps) {
     notFound();
   }
 
-  return <RoleDashboard role={roleDef} />;
+  return (
+    <Suspense>
+      <RoleDashboard role={roleDef} />
+    </Suspense>
+  );
 }

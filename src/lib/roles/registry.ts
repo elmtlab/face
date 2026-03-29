@@ -48,6 +48,14 @@ const BUILT_IN_ROLES: RoleDefinition[] = [
       { type: "issue-board", title: "Board", size: "large" },
       { type: "agent-status", title: "Agent Status", size: "small" },
     ],
+    sidebarLinks: [
+      { key: "requirements", label: "Requirements", icon: "◉", widgets: [{ type: "requirements-list", title: "Requirements", size: "full" }] },
+      { key: "new-requirement", label: "New Requirement", icon: "✦", widgets: [{ type: "task-submit", title: "New Requirement", size: "full" }] },
+      { key: "issues", label: "Issues", icon: "☰", widgets: [{ type: "issue-list", title: "Issues", size: "full" }] },
+      { key: "tasks", label: "Tasks", icon: "▤", widgets: [{ type: "task-list", title: "Tasks", size: "full" }] },
+      { key: "board", label: "Board", icon: "▦", widgets: [{ type: "issue-board", title: "Board", size: "full" }] },
+      { key: "milestones", label: "Milestones", icon: "◎", widgets: [{ type: "milestone-summary", title: "Milestones", size: "full" }] },
+    ],
   },
   {
     slug: "pm",
@@ -86,6 +94,13 @@ const BUILT_IN_ROLES: RoleDefinition[] = [
       { type: "requirements-list", title: "Requirements", size: "medium" },
       { type: "task-list", title: "Recent Tasks", size: "large" },
     ],
+    sidebarLinks: [
+      { key: "requirements", label: "Requirements", icon: "◉", widgets: [{ type: "requirements-list", title: "Requirements", size: "full" }] },
+      { key: "new-requirement", label: "New Requirement", icon: "✦", widgets: [{ type: "task-submit", title: "New Requirement", size: "full" }] },
+      { key: "milestones", label: "Milestones", icon: "◎", widgets: [{ type: "milestone-summary", title: "Milestones", size: "full" }] },
+      { key: "roadmap", label: "Roadmap", icon: "▸", widgets: [{ type: "task-list", title: "Roadmap", size: "full" }] },
+      { key: "board", label: "Board", icon: "▦", widgets: [{ type: "issue-board", title: "Board", size: "full" }] },
+    ],
   },
   {
     slug: "test",
@@ -123,6 +138,13 @@ const BUILT_IN_ROLES: RoleDefinition[] = [
       { type: "task-list", title: "Test Tasks", size: "medium" },
       { type: "triage-summary", title: "Triage", size: "medium" },
     ],
+    sidebarLinks: [
+      { key: "issues", label: "Issues", icon: "☰", widgets: [{ type: "issue-list", title: "Issues", size: "full" }] },
+      { key: "bugs", label: "Bug Tracker", icon: "⚑", widgets: [{ type: "issue-list", title: "Bug Tracker", size: "full", props: { filterLabel: "bug" } }] },
+      { key: "triage", label: "Triage", icon: "◆", widgets: [{ type: "triage-summary", title: "Triage", size: "full" }] },
+      { key: "tasks", label: "Test Tasks", icon: "▤", widgets: [{ type: "task-list", title: "Test Tasks", size: "full" }] },
+      { key: "board", label: "Board", icon: "▦", widgets: [{ type: "issue-board", title: "Board", size: "full" }] },
+    ],
   },
   {
     slug: "design",
@@ -155,6 +177,11 @@ const BUILT_IN_ROLES: RoleDefinition[] = [
       { type: "task-list", title: "Design Tasks", size: "large" },
       { type: "issue-list", title: "Design Issues", size: "medium", props: { filterLabel: "design" } },
     ],
+    sidebarLinks: [
+      { key: "issues", label: "Design Issues", icon: "☰", widgets: [{ type: "issue-list", title: "Design Issues", size: "full", props: { filterLabel: "design" } }] },
+      { key: "tasks", label: "Design Tasks", icon: "▤", widgets: [{ type: "task-list", title: "Design Tasks", size: "full" }] },
+      { key: "board", label: "Board", icon: "▦", widgets: [{ type: "issue-board", title: "Board", size: "full" }] },
+    ],
   },
   {
     slug: "hr",
@@ -185,6 +212,9 @@ const BUILT_IN_ROLES: RoleDefinition[] = [
     widgets: [
       { type: "task-submit", title: "Ask AI", size: "full" },
       { type: "task-list", title: "HR Tasks", size: "large" },
+    ],
+    sidebarLinks: [
+      { key: "tasks", label: "HR Tasks", icon: "▤", widgets: [{ type: "task-list", title: "HR Tasks", size: "full" }] },
     ],
   },
   {
@@ -217,6 +247,9 @@ const BUILT_IN_ROLES: RoleDefinition[] = [
       { type: "task-submit", title: "Ask AI", size: "full" },
       { type: "task-list", title: "Finance Tasks", size: "large" },
     ],
+    sidebarLinks: [
+      { key: "tasks", label: "Finance Tasks", icon: "▤", widgets: [{ type: "task-list", title: "Finance Tasks", size: "full" }] },
+    ],
   },
   {
     slug: "sales",
@@ -248,6 +281,9 @@ const BUILT_IN_ROLES: RoleDefinition[] = [
       { type: "task-submit", title: "Ask AI", size: "full" },
       { type: "task-list", title: "Sales Tasks", size: "large" },
     ],
+    sidebarLinks: [
+      { key: "tasks", label: "Sales Tasks", icon: "▤", widgets: [{ type: "task-list", title: "Sales Tasks", size: "full" }] },
+    ],
   },
   {
     slug: "stakeholder",
@@ -275,6 +311,11 @@ const BUILT_IN_ROLES: RoleDefinition[] = [
       { type: "milestone-summary", title: "Milestone Progress", size: "full" },
       { type: "issue-board", title: "Project Board", size: "large", props: { readOnly: true } },
       { type: "task-list", title: "Recent Activity", size: "medium", props: { readOnly: true } },
+    ],
+    sidebarLinks: [
+      { key: "milestones", label: "Milestone Progress", icon: "◎", widgets: [{ type: "milestone-summary", title: "Milestone Progress", size: "full" }] },
+      { key: "board", label: "Project Board", icon: "▦", widgets: [{ type: "issue-board", title: "Project Board", size: "full", props: { readOnly: true } }] },
+      { key: "activity", label: "Recent Activity", icon: "▤", widgets: [{ type: "task-list", title: "Recent Activity", size: "full", props: { readOnly: true } }] },
     ],
   },
 ];
