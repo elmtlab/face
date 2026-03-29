@@ -58,7 +58,7 @@ const CATEGORY_ICONS: Record<string, string> = {
 
 const TERMINAL_STATUSES = new Set(["completed", "failed", "cancelled"]);
 
-const STALE_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
+const STALE_THRESHOLD_MS = 3 * 60 * 1000; // 3 minutes (heartbeat writes every 60s)
 
 function isTaskStale(task: TaskData): boolean {
   if (task.status !== "running") return false;
@@ -195,7 +195,7 @@ export function TaskStatusPanel({ taskId, onStatusChange, onRestart }: Props) {
         <div className="px-4 py-3 border-b border-zinc-800 bg-amber-950/30">
           <div className="flex items-center justify-between gap-3">
             <p className="text-xs text-amber-400">
-              Task may be stale — no updates received for over 5 minutes.
+              Task may be stale — no updates received for over 3 minutes.
             </p>
             <button
               onClick={handleMarkFailed}
