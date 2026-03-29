@@ -4,6 +4,7 @@ import { writeTask, readAllTasks } from "./file-manager";
 import { eventBus } from "../events/bus";
 import type { FaceTask } from "./types";
 import { postCompletionComment } from "./github-notify";
+import { createPRForCompletedTask } from "../project/pr-creator";
 export { describeToolUse } from "./describe-tool";
 import { describeToolUse } from "./describe-tool";
 
@@ -277,6 +278,13 @@ function spawnClaudeCode(task: FaceTask, binaryPath: string): void {
 
     // Post completion comment to linked GitHub issue (fire-and-forget)
     postCompletionComment(task);
+
+    // Auto-create PR for completed implementation tasks (fire-and-forget)
+    if (task.status === "completed") {
+      createPRForCompletedTask(task).catch((err) =>
+        console.error(`[face] PR creation failed for task ${task.id}:`, err),
+      );
+    }
   });
 
   child.on("error", (err) => {

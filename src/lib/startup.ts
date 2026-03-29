@@ -2,6 +2,7 @@ import { runMigrations } from "./db/migrate";
 import { detectAllAgents } from "./agents/detect";
 import { ensureFaceDir, watchTasks } from "./tasks/file-manager";
 import { eventBus } from "./events/bus";
+import { startPRPoller } from "./project/pr-poller";
 
 const globalForStartup = globalThis as unknown as {
   __faceInitialized?: boolean;
@@ -48,6 +49,9 @@ export async function runStartup(): Promise<void> {
     eventBus.emit("task-file-changed", { event, filename });
   });
   globalForStartup.__faceCleanup = unwatch;
+
+  // 5. Start background PR merge-status poller
+  startPRPoller();
 
   console.log("[face] Server ready");
 }

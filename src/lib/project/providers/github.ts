@@ -327,6 +327,63 @@ export class GitHubProvider implements ProjectProvider {
     }
   }
 
+  // ── Pull Requests ──────────────────────────────────────────────
+
+  /**
+   * List open PRs whose head branch matches the given branch name.
+   */
+  async findPRByBranch(branch: string): Promise<{ number: number; url: string } | null> {
+    try {
+      const prs = await this.api(
+        `/repos/${this.owner}/${this.repo}/pulls?head=${this.owner}:${branch}&state=open&per_page=1`
+      );
+      if (prs.length > 0) {
+        return { number: prs[0].number, url: prs[0].html_url };
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Create a pull request.
+   */
+  async createPullRequest(input: {
+    title: string;
+    body: string;
+    head: string;
+    base?: string;
+  }): Promise<{ number: number; url: string }> {
+    const raw = await this.api(`/repos/${this.owner}/${this.repo}/pulls`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: input.title,
+        body: input.body,
+        head: input.head,
+        base: input.base ?? "main",
+      }),
+    });
+    return { number: raw.number, url: raw.html_url };
+  }
+
+  /**
+   * Get merge status of a PR by number.
+   * Returns "open", "merged", or "closed" (closed without merge).
+   */
+  async getPRStatus(prNumber: number): Promise<"open" | "merged" | "closed"> {
+    const raw = await this.api(`/repos/${this.owner}/${this.repo}/pulls/${prNumber}`);
+    if (raw.merged) return "merged";
+    if (raw.state === "closed") return "closed";
+    return "open";
+  }
+
+  /** Expose owner/repo for callers that need the repo identifier. */
+  getRepo(): string {
+    return `${this.owner}/${this.repo}`;
+  }
+
   async listMembers(): Promise<User[]> {
     try {
       const raw = await this.api(`/repos/${this.owner}/${this.repo}/collaborators?per_page=100`);
