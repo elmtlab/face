@@ -27,6 +27,14 @@ export interface GeneratedStory {
 
 export type ApprovalStatus = "pending" | "approved" | "rejected";
 
+export interface PullRequestInfo {
+  number: number;
+  url: string;
+  repo: string;          // "owner/repo"
+  branch: string;
+  status: "open" | "merged" | "closed"; // tracks current PR state
+}
+
 export interface WorkflowState {
   id: string;
   phase: "gathering" | "planning" | "review" | "approved" | "implementing" | "done";
@@ -37,6 +45,7 @@ export interface WorkflowState {
   pmApproval: ApprovalStatus;
   engApproval: ApprovalStatus;
   taskId: string | null;        // FACE task ID once implementation starts
+  pr: PullRequestInfo | null;   // PR created after implementation
   createdAt: string;
   updatedAt: string;
 }
@@ -94,6 +103,7 @@ export function createWorkflow(): WorkflowState {
     pmApproval: "pending",
     engApproval: "pending",
     taskId: null,
+    pr: null,
     createdAt: now,
     updatedAt: now,
   };
