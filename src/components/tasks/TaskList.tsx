@@ -4,11 +4,14 @@ import { useEffect, useState } from "react";
 import type { FaceTask } from "@/lib/tasks/types";
 import { TaskRow } from "./TaskRow";
 import { TaskDetail } from "./TaskDetail";
+import { useRoleSlug } from "@/components/shared/useRoleSlug";
 
 export function TaskList() {
   const [tasks, setTasks] = useState<FaceTask[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [filter, setFilter] = useState<string>("all");
+  const [roleFilter, setRoleFilter] = useState<string>("all");
+  const { currentSlug, roles } = useRoleSlug();
 
   async function loadTasks() {
     try {
@@ -26,8 +29,16 @@ export function TaskList() {
     return () => clearInterval(interval);
   }, []);
 
-  const filtered =
-    filter === "all" ? tasks : tasks.filter((t) => t.status === filter);
+  const filtered = tasks.filter((t) => {
+    if (filter !== "all" && t.status !== filter) return false;
+    if (roleFilter !== "all") {
+      const slug = roleFilter === "mine" ? currentSlug : roleFilter;
+      if (!slug) return true;
+      const matches = t.creatorRole === slug || (t.assignedRoles ?? []).includes(slug);
+      if (!matches) return false;
+    }
+    return true;
+  });
 
   async function handleDelete(taskId: string) {
     try {
@@ -65,17 +76,30 @@ export function TaskList() {
               <span className="ml-2 text-zinc-600">({tasks.length})</span>
             )}
           </h2>
-          <select
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-            className="rounded-md border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs text-zinc-300 focus:outline-none focus:ring-1 focus:ring-blue-600"
-          >
-            <option value="all">All</option>
-            <option value="running">Running</option>
-            <option value="pending">Pending</option>
-            <option value="completed">Completed</option>
-            <option value="failed">Failed</option>
-          </select>
+          <div className="flex items-center gap-1.5">
+            <select
+              value={roleFilter}
+              onChange={(e) => setRoleFilter(e.target.value)}
+              className="rounded-md border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs text-zinc-300 focus:outline-none focus:ring-1 focus:ring-blue-600"
+            >
+              <option value="all">All Roles</option>
+              <option value="mine">My Role{currentSlug ? ` (${currentSlug})` : ""}</option>
+              {roles.map((r) => (
+                <option key={r.slug} value={r.slug}>{r.label}</option>
+              ))}
+            </select>
+            <select
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+              className="rounded-md border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs text-zinc-300 focus:outline-none focus:ring-1 focus:ring-blue-600"
+            >
+              <option value="all">All</option>
+              <option value="running">Running</option>
+              <option value="pending">Pending</option>
+              <option value="completed">Completed</option>
+              <option value="failed">Failed</option>
+            </select>
+          </div>
         </div>
         <div className="space-y-2 overflow-y-auto flex-1 min-h-0">
           {filtered.length === 0 ? (

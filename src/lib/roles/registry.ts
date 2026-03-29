@@ -350,3 +350,15 @@ export function getRoleSlugs(): string[] {
 export function registerRole(definition: RoleDefinition): void {
   roles.set(definition.slug, definition);
 }
+
+/**
+ * Look up a role slug by its UserRole value (e.g. "engineer" → "dev").
+ * Returns the UserRole string itself as fallback if no match is found.
+ */
+export function getRoleSlugByUserRole(userRole: string): string {
+  initRegistry();
+  for (const def of roles.values()) {
+    if (def.userRole === userRole) return def.slug;
+  }
+  return userRole;
+}

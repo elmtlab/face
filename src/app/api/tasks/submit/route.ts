@@ -15,7 +15,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const { agentId, prompt, title, workingDirectory, linkedIssue } = body;
+  const { agentId, prompt, title, workingDirectory, linkedIssue, creatorRole, assignedRoles } = body;
 
   if (typeof agentId !== "string" || !KNOWN_AGENTS.has(agentId)) {
     return NextResponse.json(
@@ -71,10 +71,17 @@ export async function POST(request: NextRequest) {
     issueNumber = parsed;
   }
 
+  const safeCreatorRole = typeof creatorRole === "string" ? creatorRole : undefined;
+  const safeAssignedRoles = Array.isArray(assignedRoles)
+    ? assignedRoles.filter((r: unknown) => typeof r === "string")
+    : undefined;
+
   const result = await submitTask(agentId, prompt.trim(), {
     title: safeTitle,
     workingDirectory: cwd,
     linkedIssue: issueNumber,
+    creatorRole: safeCreatorRole,
+    assignedRoles: safeAssignedRoles,
   });
 
   if (result.error) {

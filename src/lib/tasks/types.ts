@@ -45,6 +45,10 @@ export interface FaceTask {
   sessionId?: string;
   /** GitHub issue number to post completion summaries to */
   linkedIssue?: number;
+  /** Role slug of the user who created this task (e.g. "pm", "dev") */
+  creatorRole?: string;
+  /** Role slugs relevant to this task (e.g. ["dev", "pm"]) */
+  assignedRoles?: string[];
 }
 
 export interface AgentDetection {
