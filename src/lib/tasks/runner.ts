@@ -142,6 +142,18 @@ function spawnClaudeCode(task: FaceTask, binaryPath: string): void {
 
   runningTasks.set(task.id, child);
 
+  // Heartbeat: periodically update task.updatedAt so the UI doesn't
+  // think the task is stale during long operations with no tool_use events.
+  const HEARTBEAT_INTERVAL_MS = 60_000; // 60 seconds
+  const heartbeat = setInterval(() => {
+    task.updatedAt = new Date().toISOString();
+    writeTask(task);
+    eventBus.emit("task-file-changed", {
+      event: "change",
+      filename: `${task.id}.json`,
+    });
+  }, HEARTBEAT_INTERVAL_MS);
+
   const MAX_OUTPUT = 2 * 1024 * 1024; // 2MB cap
   let stderr = "";
   let lineBuf = ""; // buffer for partial lines from stdout
@@ -234,6 +246,7 @@ function spawnClaudeCode(task: FaceTask, binaryPath: string): void {
   });
 
   child.on("close", (code) => {
+    clearInterval(heartbeat);
     runningTasks.delete(task.id);
 
     // Process any remaining partial line in the buffer
@@ -267,6 +280,7 @@ function spawnClaudeCode(task: FaceTask, binaryPath: string): void {
   });
 
   child.on("error", (err) => {
+    clearInterval(heartbeat);
     runningTasks.delete(task.id);
     task.status = "failed";
     task.result = err.message;
