@@ -9,6 +9,7 @@ export async function GET() {
       label: r.label,
       description: r.description,
       routePath: r.routePath,
+      userRole: r.userRole,
       readOnly: r.permissions.readOnly,
     })),
   });

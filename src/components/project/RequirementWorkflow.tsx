@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { TaskStatusPanel } from "./TaskStatusPanel";
+import { useRoleSlug } from "@/components/shared/useRoleSlug";
+import { RoleTagBadge } from "@/components/shared/RoleTagBadge";
 
 // ── Types (mirroring server) ───────────────────────────────────────
 
@@ -32,6 +34,8 @@ interface WorkflowState {
   pmApproval: ApprovalStatus;
   engApproval: ApprovalStatus;
   taskId: string | null;
+  creatorRole: string | null;
+  assignedRoles: string[];
   createdAt: string;
   updatedAt: string;
 }
@@ -95,6 +99,7 @@ export function RequirementWorkflow({ workflowId, onClose, onCreated }: Props) {
   const [error, setError] = useState<string | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const { currentSlug: userRoleSlug } = useRoleSlug();
 
   // Load existing workflow, or set up a local-only placeholder for new ones.
   // New workflows are only persisted on the first message (see sendMessage).
@@ -115,6 +120,8 @@ export function RequirementWorkflow({ workflowId, onClose, onCreated }: Props) {
         pmApproval: "pending",
         engApproval: "pending",
         taskId: null,
+        creatorRole: null,
+        assignedRoles: [],
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       });
@@ -172,7 +179,14 @@ export function RequirementWorkflow({ workflowId, onClose, onCreated }: Props) {
 
       // If this is a brand-new workflow (not yet persisted), create it first
       if (!wfId) {
-        const createRes = await fetch("/api/project/workflow", { method: "POST" });
+        const createRes = await fetch("/api/project/workflow", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            creatorRole: userRoleSlug ?? undefined,
+            assignedRoles: userRoleSlug ? [userRoleSlug] : [],
+          }),
+        });
         const createData = await createRes.json();
         if (!createData.workflow?.id) throw new Error("Failed to create workflow");
         wfId = createData.workflow.id;
@@ -255,6 +269,16 @@ export function RequirementWorkflow({ workflowId, onClose, onCreated }: Props) {
             onApprove={(role) => doAction("approve", { role })}
             onReject={(role) => doAction("reject", { role })}
             onCreateIssue={() => doAction("create_issue")}
+            onAssignedRolesChange={(roles) => {
+              setWorkflow((w) => w ? { ...w, assignedRoles: roles } : null);
+              if (workflow.id) {
+                fetch(`/api/project/workflow/${workflow.id}/chat`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ action: "update_roles", assignedRoles: roles }),
+                });
+              }
+            }}
             loading={loading}
           />
         )}
@@ -438,6 +462,7 @@ function StoryReview({
   onApprove,
   onReject,
   onCreateIssue,
+  onAssignedRolesChange,
   loading,
 }: {
   story: GeneratedStory;
@@ -445,6 +470,7 @@ function StoryReview({
   onApprove: (role: string) => void;
   onReject: (role: string) => void;
   onCreateIssue: () => void;
+  onAssignedRolesChange: (roles: string[]) => void;
   loading: boolean;
 }) {
   return (
@@ -507,6 +533,13 @@ function StoryReview({
           )}
         </div>
       </div>
+
+      {/* Role tags */}
+      <RoleTagSelector
+        creatorRole={workflow.creatorRole}
+        assignedRoles={workflow.assignedRoles}
+        onChange={onAssignedRolesChange}
+      />
 
       {/* Create issue button */}
       {!workflow.issueId && (
@@ -837,6 +870,57 @@ function DoneView({
         >
           {taskFailed ? "Close" : "Done"}
         </button>
+      </div>
+    </div>
+  );
+}
+
+function RoleTagSelector({
+  creatorRole,
+  assignedRoles,
+  onChange,
+}: {
+  creatorRole: string | null;
+  assignedRoles: string[];
+  onChange: (roles: string[]) => void;
+}) {
+  const { roles } = useRoleSlug();
+
+  const toggle = (slug: string) => {
+    if (assignedRoles.includes(slug)) {
+      onChange(assignedRoles.filter((r) => r !== slug));
+    } else {
+      onChange([...assignedRoles, slug]);
+    }
+  };
+
+  return (
+    <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-3">
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-xs font-medium text-zinc-400">Role Tags</span>
+        {creatorRole && (
+          <span className="flex items-center gap-1 text-[10px] text-zinc-500">
+            Creator: <RoleTagBadge role={creatorRole} variant="creator" />
+          </span>
+        )}
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {roles.map((r) => {
+          const active = assignedRoles.includes(r.slug);
+          return (
+            <button
+              key={r.slug}
+              onClick={() => toggle(r.slug)}
+              className={`text-[10px] px-2 py-1 rounded border transition-colors ${
+                active
+                  ? "bg-indigo-600/20 text-indigo-300 border-indigo-600/40"
+                  : "bg-zinc-800 text-zinc-500 border-zinc-700 hover:text-zinc-300 hover:border-zinc-600"
+              }`}
+            >
+              {r.slug}
+            </button>
+          );
+        })}
       </div>
     </div>
   );

@@ -3,6 +3,7 @@
 import type { FaceTask } from "@/lib/tasks/types";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { RelativeTime } from "@/components/shared/RelativeTime";
+import { RoleTagBadge } from "@/components/shared/RoleTagBadge";
 
 export function TaskRow({
   task,
@@ -115,6 +116,10 @@ export function TaskRow({
       {/* Meta */}
       <div className="mt-2 flex items-center gap-3 text-xs text-zinc-500">
         <span className="font-mono">{task.agent}</span>
+        {task.creatorRole && <RoleTagBadge role={task.creatorRole} variant="creator" />}
+        {task.assignedRoles?.map((r) => (
+          <RoleTagBadge key={r} role={r} />
+        ))}
         <RelativeTime date={task.updatedAt} />
       </div>
 
