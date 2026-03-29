@@ -1,7 +1,8 @@
 "use client";
 
-import type { ViewMode } from "@/app/project/page";
 import { WorkflowList } from "./WorkflowList";
+
+type ViewMode = "board" | "list" | "workflow" | "requirements" | "milestones" | "triage" | "settings";
 
 interface Props {
   activeView: ViewMode;
