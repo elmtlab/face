@@ -8,6 +8,7 @@ import { IssueBoardWidget } from "./IssueBoardWidget";
 import { IssueListWidget } from "./IssueListWidget";
 import { MilestoneSummaryWidget } from "./MilestoneSummaryWidget";
 import { RequirementsListWidget } from "./RequirementsListWidget";
+import { RequirementWorkflowWidget } from "./RequirementWorkflowWidget";
 import { AgentStatusWidget } from "./AgentStatusWidget";
 import { TriageSummaryWidget } from "./TriageSummaryWidget";
 
@@ -37,6 +38,8 @@ export function WidgetRenderer({ config, promptTemplates }: WidgetRendererProps)
         return <MilestoneSummaryWidget />;
       case "requirements-list":
         return <RequirementsListWidget />;
+      case "requirement-workflow":
+        return <RequirementWorkflowWidget />;
       case "agent-status":
         return <AgentStatusWidget />;
       case "triage-summary":
