@@ -50,7 +50,6 @@ const BUILT_IN_ROLES: RoleDefinition[] = [
     ],
     sidebarLinks: [
       { key: "requirements", label: "Requirements", icon: "◉", widgets: [{ type: "requirements-list", title: "Requirements", size: "full" }] },
-      { key: "new-requirement", label: "New Requirement", icon: "✦", widgets: [{ type: "requirement-workflow", title: "New Requirement", size: "full" }] },
       { key: "issues", label: "Issues", icon: "☰", widgets: [{ type: "issue-list", title: "Issues", size: "full" }] },
       { key: "tasks", label: "Tasks", icon: "▤", widgets: [{ type: "task-list", title: "Tasks", size: "full" }] },
       { key: "board", label: "Board", icon: "▦", widgets: [{ type: "issue-board", title: "Board", size: "full" }] },
@@ -96,7 +95,6 @@ const BUILT_IN_ROLES: RoleDefinition[] = [
     ],
     sidebarLinks: [
       { key: "requirements", label: "Requirements", icon: "◉", widgets: [{ type: "requirements-list", title: "Requirements", size: "full" }] },
-      { key: "new-requirement", label: "New Requirement", icon: "✦", widgets: [{ type: "requirement-workflow", title: "New Requirement", size: "full" }] },
       { key: "milestones", label: "Milestones", icon: "◎", widgets: [{ type: "milestone-summary", title: "Milestones", size: "full" }] },
       { key: "roadmap", label: "Roadmap", icon: "▸", widgets: [{ type: "task-list", title: "Roadmap", size: "full" }] },
       { key: "board", label: "Board", icon: "▦", widgets: [{ type: "issue-board", title: "Board", size: "full" }] },
