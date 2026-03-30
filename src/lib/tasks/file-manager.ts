@@ -7,14 +7,6 @@ const FACE_DIR = path.join(os.homedir(), ".face");
 const TASKS_DIR = path.join(FACE_DIR, "tasks");
 const CONFIG_PATH = path.join(FACE_DIR, "config.json");
 
-export function getFaceDir(): string {
-  return FACE_DIR;
-}
-
-export function getTasksDir(): string {
-  return TASKS_DIR;
-}
-
 export function ensureFaceDir(): void {
   if (!fs.existsSync(FACE_DIR)) {
     fs.mkdirSync(FACE_DIR, { recursive: true });

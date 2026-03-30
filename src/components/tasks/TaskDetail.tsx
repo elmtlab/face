@@ -4,6 +4,7 @@ import { useState, useCallback } from "react";
 import type { FaceTask } from "@/lib/tasks/types";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { RelativeTime } from "@/components/shared/RelativeTime";
+import { CollapsibleSection } from "@/components/shared/CollapsibleSection";
 
 const CATEGORY_META: Record<
   string,
@@ -123,9 +124,11 @@ export function TaskDetail({ task, onRestart }: { task: FaceTask; onRestart?: (t
           {/* What's being looked at */}
           {context.length > 0 && (
             <CollapsibleSection title="Context being reviewed" defaultOpen={changes.length === 0}>
-              {context.map((a) => (
-                <ActivityRow key={a.id} activity={a} compact />
-              ))}
+              <div className="space-y-2 ml-5">
+                {context.map((a) => (
+                  <ActivityRow key={a.id} activity={a} compact />
+                ))}
+              </div>
             </CollapsibleSection>
           )}
         </>
@@ -134,9 +137,11 @@ export function TaskDetail({ task, onRestart }: { task: FaceTask; onRestart?: (t
       {/* COMPLETED — show how the work was done (collapsed) */}
       {task.status === "completed" && activities.length > 0 && (
         <CollapsibleSection title="How it was done" defaultOpen={false}>
-          {activities.map((a) => (
-            <ActivityRow key={a.id} activity={a} compact />
-          ))}
+          <div className="space-y-2 ml-5">
+            {activities.map((a) => (
+              <ActivityRow key={a.id} activity={a} compact />
+            ))}
+          </div>
         </CollapsibleSection>
       )}
 
@@ -201,38 +206,6 @@ function ActivityRow({
   );
 }
 
-function CollapsibleSection({
-  title,
-  defaultOpen,
-  children,
-}: {
-  title: string;
-  defaultOpen: boolean;
-  children: React.ReactNode;
-}) {
-  const [open, setOpen] = useState(defaultOpen);
-
-  return (
-    <div>
-      <button
-        onClick={() => setOpen(!open)}
-        className="flex items-center gap-2 mb-2 group"
-      >
-        <svg
-          className={`h-3 w-3 text-zinc-600 transition-transform ${open ? "rotate-90" : ""}`}
-          viewBox="0 0 16 16"
-          fill="currentColor"
-        >
-          <path d="M6 3l5 5-5 5V3z" />
-        </svg>
-        <h4 className="text-xs font-semibold uppercase tracking-wider text-zinc-500 group-hover:text-zinc-400 transition-colors">
-          {title}
-        </h4>
-      </button>
-      {open && <div className="space-y-2 ml-5">{children}</div>}
-    </div>
-  );
-}
 
 /**
  * Extracts concise bullet points from the agent result text and activities.

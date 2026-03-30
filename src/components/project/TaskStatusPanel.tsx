@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { CollapsibleSection } from "@/components/shared/CollapsibleSection";
 
 interface TaskStep {
   id: string;
@@ -209,50 +210,28 @@ export function TaskStatusPanel({ taskId, onStatusChange, onRestart }: Props) {
       )}
 
       {/* Progress bar for running tasks */}
-      {isActive && task.steps.length > 0 && task.activities.length === 0 && (
-        <div className="px-4 py-2 border-b border-zinc-800">
-          <div className="flex items-center gap-2">
-            <div className="flex-1 h-1 bg-zinc-800 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-amber-500 rounded-full transition-all duration-500"
-                style={{
-                  width: `${Math.min(
-                    (task.steps.filter((s) => s.status === "completed").length /
-                      Math.max(task.steps.length, 1)) *
-                      100,
-                    95
-                  )}%`,
-                }}
-              />
+      {isActive && (task.activities.length > 0 || task.steps.length > 0) && (() => {
+        const completed = task.activities.length > 0
+          ? task.activities.filter((a) => a.completedAt).length
+          : task.steps.filter((s) => s.status === "completed").length;
+        const total = task.activities.length > 0 ? task.activities.length : task.steps.length;
+        const label = task.activities.length > 0 ? "activities" : "steps";
+        return (
+          <div className="px-4 py-2 border-b border-zinc-800">
+            <div className="flex items-center gap-2">
+              <div className="flex-1 h-1 bg-zinc-800 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-amber-500 rounded-full transition-all duration-500"
+                  style={{ width: `${Math.min((completed / Math.max(total, 1)) * 100, 95)}%` }}
+                />
+              </div>
+              <span className="text-[10px] text-zinc-500">
+                {completed}/{total} {label}
+              </span>
             </div>
-            <span className="text-[10px] text-zinc-500">
-              {task.steps.filter((s) => s.status === "completed").length}/{task.steps.length} steps
-            </span>
           </div>
-        </div>
-      )}
-      {isActive && task.activities.length > 0 && (
-        <div className="px-4 py-2 border-b border-zinc-800">
-          <div className="flex items-center gap-2">
-            <div className="flex-1 h-1 bg-zinc-800 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-amber-500 rounded-full transition-all duration-500"
-                style={{
-                  width: `${Math.min(
-                    (task.activities.filter((a) => a.completedAt).length /
-                      Math.max(task.activities.length, 1)) *
-                      100,
-                    95
-                  )}%`,
-                }}
-              />
-            </div>
-            <span className="text-[10px] text-zinc-500">
-              {task.activities.filter((a) => a.completedAt).length}/{task.activities.length} activities
-            </span>
-          </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Sections */}
       <div className="divide-y divide-zinc-800/50">
@@ -366,32 +345,3 @@ export function TaskStatusPanel({ taskId, onStatusChange, onRestart }: Props) {
   );
 }
 
-function CollapsibleSection({
-  title,
-  count,
-  expanded,
-  onToggle,
-  children,
-}: {
-  title: string;
-  count?: number;
-  expanded: boolean;
-  onToggle: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <div>
-      <button
-        onClick={onToggle}
-        className="w-full px-4 py-2 flex items-center gap-2 text-xs text-zinc-400 hover:text-zinc-300 transition-colors"
-      >
-        <span className={`transition-transform ${expanded ? "rotate-90" : ""}`}>▸</span>
-        <span className="font-medium">{title}</span>
-        {count !== undefined && (
-          <span className="text-zinc-600">({count})</span>
-        )}
-      </button>
-      {expanded && children}
-    </div>
-  );
-}
