@@ -11,6 +11,7 @@ import {
 } from "@/lib/roles/project-views";
 import type { SidebarLink } from "@/lib/roles/types";
 import { WidgetRenderer } from "@/components/widgets/WidgetRenderer";
+import { useActiveProject } from "@/components/projects/ProjectSelector";
 
 const STORAGE_KEY = "face-project-view";
 
@@ -40,6 +41,7 @@ export function ProjectDashboard() {
 
   const [activeRole, setActiveRole] = useState<ProjectViewKey>(resolveRole);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const { activeProjectId, projects, setActive: setActiveProject } = useActiveProject();
 
   const role = PROJECT_VIEWS[activeRole];
 
@@ -187,6 +189,21 @@ export function ProjectDashboard() {
           </Link>
         </div>
 
+        {/* Project switcher */}
+        {projects.length > 1 && (
+          <div className="border-b border-zinc-800 px-3 py-2">
+            <select
+              value={activeProjectId ?? ""}
+              onChange={(e) => setActiveProject(e.target.value || null)}
+              className="w-full rounded-md border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs text-zinc-300 focus:outline-none focus:ring-1 focus:ring-indigo-600"
+            >
+              {projects.map((p) => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+          </div>
+        )}
+
         {/* Role tabs in sidebar */}
         <div className="border-b border-zinc-800 px-3 py-2">
           {roleTabs}
@@ -248,6 +265,21 @@ export function ProjectDashboard() {
                 </svg>
               </button>
             </div>
+
+            {/* Project switcher (mobile) */}
+            {projects.length > 1 && (
+              <div className="border-b border-zinc-800 px-4 py-2">
+                <select
+                  value={activeProjectId ?? ""}
+                  onChange={(e) => setActiveProject(e.target.value || null)}
+                  className="w-full rounded-md border border-zinc-700 bg-zinc-800 px-2 py-1.5 text-xs text-zinc-300 focus:outline-none focus:ring-1 focus:ring-indigo-600"
+                >
+                  {projects.map((p) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             {/* Role tabs in mobile sidebar */}
             <div className="border-b border-zinc-800 px-4 py-2">

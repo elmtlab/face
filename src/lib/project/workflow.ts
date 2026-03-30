@@ -51,6 +51,8 @@ export interface WorkflowState {
   creatorRole: string | null;
   /** Role slugs relevant to this requirement (e.g. ["dev", "pm"]) */
   assignedRoles: string[];
+  /** Project this requirement belongs to */
+  projectId: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -76,6 +78,7 @@ export function loadWorkflow(id: string): WorkflowState | null {
     // Backfill fields added after initial schema
     if (!("creatorRole" in raw)) raw.creatorRole = null;
     if (!("assignedRoles" in raw)) raw.assignedRoles = [];
+    if (!("projectId" in raw)) raw.projectId = null;
     return raw;
   } catch {
     return null;
@@ -89,17 +92,14 @@ export function listWorkflows(): WorkflowState[] {
   return files
     .filter((f: string) => f.endsWith(".json"))
     .map((f: string) => {
-      try {
-        return JSON.parse(readFileSync(join(WORKFLOW_DIR, f), "utf-8")) as WorkflowState;
-      } catch {
-        return null;
-      }
+      const id = f.replace(".json", "");
+      return loadWorkflow(id);
     })
     .filter((w): w is WorkflowState => w !== null)
     .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
 }
 
-export function createWorkflow(options?: { creatorRole?: string; assignedRoles?: string[] }): WorkflowState {
+export function createWorkflow(options?: { creatorRole?: string; assignedRoles?: string[]; projectId?: string }): WorkflowState {
   const id = `wf-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
   const now = new Date().toISOString();
   const w: WorkflowState = {
@@ -115,6 +115,7 @@ export function createWorkflow(options?: { creatorRole?: string; assignedRoles?:
     pr: null,
     creatorRole: options?.creatorRole ?? null,
     assignedRoles: options?.assignedRoles ?? [],
+    projectId: options?.projectId ?? null,
     createdAt: now,
     updatedAt: now,
   };
@@ -124,9 +125,24 @@ export function createWorkflow(options?: { creatorRole?: string; assignedRoles?:
 
 // ── AI prompt builders ─────────────────────────────────────────────
 
-export function buildGatheringSystemPrompt(): string {
-  return `You are a senior technical product manager AI assistant. Your job is to help the user refine a software requirement into a clear, actionable story.
+export function buildGatheringSystemPrompt(projectContext?: { projectName?: string; repoLink?: string; allProjects?: { id: string; name: string; repoLink: string }[] }): string {
+  let projectInfo = "";
 
+  if (projectContext?.projectName) {
+    projectInfo = `\n\nCURRENT PROJECT: ${projectContext.projectName}${projectContext.repoLink ? ` (${projectContext.repoLink})` : ""}`;
+  }
+
+  if (projectContext?.allProjects && projectContext.allProjects.length > 1 && !projectContext.projectName) {
+    projectInfo = `\n\nAVAILABLE PROJECTS:\n${projectContext.allProjects.map((p) => `- ${p.name}${p.repoLink ? ` (${p.repoLink})` : ""} [id: ${p.id}]`).join("\n")}
+
+PROJECT DETECTION:
+- Analyze the user's requirement to determine which project it belongs to based on keywords, repo references, and context.
+- If you can confidently determine the project, include "[PROJECT_ID:<id>]" in your response (this tag will be hidden from the user).
+- If the requirement could apply to multiple projects or you're unsure, ask the user which project this is for. List the project names for them to choose from.`;
+  }
+
+  return `You are a senior technical product manager AI assistant. Your job is to help the user refine a software requirement into a clear, actionable story.
+${projectInfo}
 RULES:
 - If the user's message is already detailed and actionable (clear goal, scope, and steps), acknowledge the plan briefly and include "[READY_TO_PLAN]" in your FIRST response — do not ask unnecessary questions
 - Only ask clarifying questions when the requirement is genuinely vague or ambiguous

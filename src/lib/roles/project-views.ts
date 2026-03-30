@@ -80,6 +80,12 @@ export const PROJECT_VIEWS: Record<ProjectViewKey, RoleDefinition> = {
         icon: "▦",
         widgets: [{ type: "issue-board", title: "Board", size: "full" }],
       },
+      {
+        key: "projects",
+        label: "Projects",
+        icon: "▣",
+        widgets: [{ type: "project-manager", title: "Projects", size: "full" }],
+      },
     ],
   },
 
@@ -156,6 +162,12 @@ export const PROJECT_VIEWS: Record<ProjectViewKey, RoleDefinition> = {
         label: "Tasks",
         icon: "▤",
         widgets: [{ type: "task-list", title: "Tasks", size: "full" }],
+      },
+      {
+        key: "projects",
+        label: "Projects",
+        icon: "▣",
+        widgets: [{ type: "project-manager", title: "Projects", size: "full" }],
       },
     ],
   },

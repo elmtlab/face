@@ -43,8 +43,15 @@ interface WorkflowState {
   pr: PullRequestInfo | null;
   creatorRole: string | null;
   assignedRoles: string[];
+  projectId: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+interface ProjectInfo {
+  id: string;
+  name: string;
+  repoLink: string;
 }
 
 interface TaskInfo {
@@ -86,18 +93,25 @@ function getEffectivePhase(w: WorkflowState, taskStatuses: Record<string, TaskIn
 interface Props {
   onSelectWorkflow: (id: string) => void;
   onNewWorkflow: () => void;
+  /** When set, filter workflows to this project and pass to new workflows */
+  activeProjectId?: string | null;
 }
 
-export function RequirementsView({ onSelectWorkflow, onNewWorkflow }: Props) {
+export function RequirementsView({ onSelectWorkflow, onNewWorkflow, activeProjectId }: Props) {
   const [workflows, setWorkflows] = useState<WorkflowState[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [taskStatuses, setTaskStatuses] = useState<Record<string, TaskInfo>>({});
   const [restartingId, setRestartingId] = useState<string | null>(null);
   const [roleFilter, setRoleFilter] = useState<string>("all");
+  const [projectFilter, setProjectFilter] = useState<string>(activeProjectId ?? "all");
+  const [projects, setProjects] = useState<ProjectInfo[]>([]);
   const { currentSlug, roles } = useRoleSlug();
 
   const filteredWorkflows = workflows.filter((w) => {
+    // Project filter
+    if (projectFilter !== "all" && w.projectId !== projectFilter) return false;
+    // Role filter
     if (roleFilter === "all") return true;
     const slug = roleFilter === "mine" ? currentSlug : roleFilter;
     if (!slug) return true;
@@ -108,7 +122,15 @@ export function RequirementsView({ onSelectWorkflow, onNewWorkflow }: Props) {
 
   useEffect(() => {
     resetPage();
-  }, [roleFilter, resetPage]);
+  }, [roleFilter, projectFilter, resetPage]);
+
+  // Fetch projects for the filter dropdown
+  useEffect(() => {
+    fetch("/api/projects")
+      .then((r) => r.json())
+      .then((d) => setProjects(d.projects ?? []))
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     const fetchWorkflows = () => {
@@ -203,6 +225,18 @@ export function RequirementsView({ onSelectWorkflow, onNewWorkflow }: Props) {
       <div className="px-6 py-4 border-b border-zinc-800 flex items-center justify-between">
         <h2 className="text-sm font-semibold text-zinc-200">Requirements</h2>
         <div className="flex items-center gap-2">
+          {projects.length > 1 && (
+            <select
+              value={projectFilter}
+              onChange={(e) => setProjectFilter(e.target.value)}
+              className="rounded-md border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs text-zinc-300 focus:outline-none focus:ring-1 focus:ring-indigo-600"
+            >
+              <option value="all">All Projects</option>
+              {projects.map((p) => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+          )}
           <select
             value={roleFilter}
             onChange={(e) => setRoleFilter(e.target.value)}
@@ -283,6 +317,14 @@ export function RequirementsView({ onSelectWorkflow, onNewWorkflow }: Props) {
                           {(w.assignedRoles ?? []).map((r: string) => (
                             <RoleTagBadge key={r} role={r} />
                           ))}
+                          {w.projectId && projects.length > 1 && (() => {
+                            const proj = projects.find((p) => p.id === w.projectId);
+                            return proj ? (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-500 border border-zinc-700">
+                                {proj.name}
+                              </span>
+                            ) : null;
+                          })()}
                           <span className="text-[10px] text-zinc-600">
                             {new Date(w.updatedAt).toLocaleDateString()}
                           </span>

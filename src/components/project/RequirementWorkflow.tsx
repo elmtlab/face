@@ -46,6 +46,7 @@ interface WorkflowState {
   pr: PullRequestInfo | null;
   creatorRole: string | null;
   assignedRoles: string[];
+  projectId: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -100,9 +101,11 @@ interface Props {
   workflowId?: string | null; // if provided, load existing workflow
   onClose: () => void;
   onCreated: () => void; // refresh parent
+  /** Project to associate with new workflows */
+  activeProjectId?: string | null;
 }
 
-export function RequirementWorkflow({ workflowId, onClose, onCreated }: Props) {
+export function RequirementWorkflow({ workflowId, onClose, onCreated, activeProjectId }: Props) {
   const [workflow, setWorkflow] = useState<WorkflowState | null>(null);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -133,6 +136,7 @@ export function RequirementWorkflow({ workflowId, onClose, onCreated }: Props) {
         pr: null,
         creatorRole: null,
         assignedRoles: [],
+        projectId: activeProjectId ?? null,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       });
@@ -196,6 +200,7 @@ export function RequirementWorkflow({ workflowId, onClose, onCreated }: Props) {
           body: JSON.stringify({
             creatorRole: userRoleSlug ?? undefined,
             assignedRoles: userRoleSlug ? [userRoleSlug] : [],
+            projectId: activeProjectId ?? undefined,
           }),
         });
         const createData = await createRes.json();

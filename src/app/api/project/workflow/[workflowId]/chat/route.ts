@@ -10,6 +10,7 @@ import {
 import { getActiveProvider } from "@/lib/project/manager";
 import { submitTask } from "@/lib/tasks/runner";
 import { buildImplementationPrompt } from "@/lib/project/workflow";
+import { listProjects, getProject } from "@/lib/projects/store";
 
 /**
  * POST /api/project/workflow/:id/chat
@@ -49,21 +50,53 @@ export async function POST(
     };
     workflow.messages.push(userMsg);
 
+    // Build project context for AI
+    const allProjects = listProjects();
+    let projectContext: { projectName?: string; repoLink?: string; allProjects?: { id: string; name: string; repoLink: string }[] } | undefined;
+
+    if (workflow.projectId) {
+      const proj = getProject(workflow.projectId);
+      if (proj) {
+        projectContext = { projectName: proj.name, repoLink: proj.repoLink };
+      }
+    } else if (allProjects.length > 1) {
+      // No project assigned yet — give AI the list so it can detect
+      projectContext = {
+        allProjects: allProjects.map((p) => ({ id: p.id, name: p.name, repoLink: p.repoLink })),
+      };
+    } else if (allProjects.length === 1) {
+      // Single project — auto-assign
+      workflow.projectId = allProjects[0].id;
+      projectContext = { projectName: allProjects[0].name, repoLink: allProjects[0].repoLink };
+    }
+
     // Call AI for response
     const aiReply = await callAI(
-      buildGatheringSystemPrompt(),
+      buildGatheringSystemPrompt(projectContext),
       workflow.messages
     );
 
+    // Check if AI detected a project
+    const projectMatch = aiReply.match(/\[PROJECT_ID:([^\]]+)\]/);
+    if (projectMatch && !workflow.projectId) {
+      const detectedId = projectMatch[1].trim();
+      if (allProjects.find((p) => p.id === detectedId)) {
+        workflow.projectId = detectedId;
+      }
+    }
+
+    // Strip project detection tag from the message shown to user
+    const cleanReply = aiReply.replace(/\[PROJECT_ID:[^\]]+\]/g, "").trim();
+
     const assistantMsg: ChatMessage = {
       role: "assistant",
-      content: aiReply,
+      content: cleanReply,
       timestamp: new Date().toISOString(),
     };
     workflow.messages.push(assistantMsg);
 
     // Check if AI signaled it has enough info
-    if (aiReply.includes("[READY_TO_PLAN]")) {
+    if (cleanReply.includes("[READY_TO_PLAN]")) {
       workflow.phase = "planning";
     }
 
@@ -345,6 +378,17 @@ export async function POST(
     workflow.updatedAt = new Date().toISOString();
     saveWorkflow(workflow);
     return NextResponse.json({ workflow });
+  }
+
+  // ── Update project assignment ──────────────────────────────────
+  if (body.action === "update_project") {
+    if (typeof body.projectId === "string" || body.projectId === null) {
+      workflow.projectId = body.projectId;
+      workflow.updatedAt = new Date().toISOString();
+      saveWorkflow(workflow);
+      return NextResponse.json({ workflow });
+    }
+    return NextResponse.json({ error: "projectId is required" }, { status: 400 });
   }
 
   return NextResponse.json({ error: "Unknown action" }, { status: 400 });

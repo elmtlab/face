@@ -11,6 +11,7 @@ import { RequirementsListWidget } from "./RequirementsListWidget";
 import { RequirementWorkflowWidget } from "./RequirementWorkflowWidget";
 import { AgentStatusWidget } from "./AgentStatusWidget";
 import { TriageSummaryWidget } from "./TriageSummaryWidget";
+import { ProjectManagerWidget } from "./ProjectManagerWidget";
 
 interface WidgetRendererProps {
   config: WidgetConfig;
@@ -44,6 +45,8 @@ export function WidgetRenderer({ config, promptTemplates }: WidgetRendererProps)
         return <AgentStatusWidget />;
       case "triage-summary":
         return <TriageSummaryWidget />;
+      case "project-manager":
+        return <ProjectManagerWidget />;
       default:
         return (
           <p className="text-xs text-zinc-500">
