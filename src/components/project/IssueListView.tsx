@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import type { Issue, IssueStatus } from "@/lib/project/types";
 import { useProjectEvents } from "@/lib/project/use-project-events";
+import { Pagination, PAGE_SIZE } from "@/components/shared/Pagination";
 
 interface Props {
   onSelectIssue: (id: string) => void;
@@ -29,36 +30,60 @@ const STATUS_DOT: Record<string, string> = {
 
 export function IssueListView({ onSelectIssue, onAssignAgent }: Props) {
   const [issues, setIssues] = useState<Issue[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
+  const [pageLoading, setPageLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [showCreate, setShowCreate] = useState(false);
+  const initialLoad = useRef(true);
 
-  const fetchIssues = useCallback(() => {
+  const fetchIssues = useCallback((targetPage: number = page) => {
     const params = new URLSearchParams();
     if (search) params.set("search", search);
     if (statusFilter !== "all") params.set("status", statusFilter);
+    params.set("page", String(targetPage));
+    params.set("limit", String(PAGE_SIZE));
+
+    if (!initialLoad.current) setPageLoading(true);
 
     fetch(`/api/project/issues?${params}`)
       .then((r) => r.json())
       .then((data) => {
         if (data.error) setError(data.error);
-        else setIssues(data.issues);
+        else {
+          setIssues(data.issues);
+          setTotal(data.total ?? data.issues.length);
+        }
       })
       .catch((e) => setError(e.message))
-      .finally(() => setLoading(false));
+      .finally(() => {
+        setLoading(false);
+        setPageLoading(false);
+        initialLoad.current = false;
+      });
+  }, [search, statusFilter, page]);
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setPage(1);
   }, [search, statusFilter]);
 
   useEffect(() => {
-    fetchIssues();
-    const interval = setInterval(fetchIssues, 30_000);
+    fetchIssues(page);
+    const interval = setInterval(() => fetchIssues(page), 30_000);
     return () => clearInterval(interval);
-  }, [fetchIssues]);
+  }, [fetchIssues, page]);
 
   useProjectEvents(() => {
-    fetchIssues();
+    fetchIssues(page);
   }, ["issue_created", "issue_updated"]);
+
+  const handlePageChange = (p: number) => {
+    setPage(p);
+  };
 
   if (error) {
     return (
@@ -117,7 +142,10 @@ export function IssueListView({ onSelectIssue, onAssignAgent }: Props) {
       {loading ? (
         <div className="animate-pulse text-zinc-500 py-8 text-center">Loading...</div>
       ) : (
-        <div className="border border-zinc-800 rounded-lg overflow-hidden">
+        <div className={`border border-zinc-800 rounded-lg overflow-hidden${pageLoading ? " opacity-60 pointer-events-none" : ""}`}>
+          {pageLoading && (
+            <div className="text-center py-1 text-xs text-zinc-500 animate-pulse">Loading page…</div>
+          )}
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-zinc-800 bg-zinc-900/50">
@@ -190,6 +218,14 @@ export function IssueListView({ onSelectIssue, onAssignAgent }: Props) {
             </tbody>
           </table>
         </div>
+      )}
+      {!loading && total > 0 && (
+        <Pagination
+          currentPage={page}
+          totalItems={total}
+          onPageChange={handlePageChange}
+          loading={pageLoading}
+        />
       )}
     </div>
   );

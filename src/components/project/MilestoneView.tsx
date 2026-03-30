@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import type { Milestone } from "@/lib/project/types";
+import { Pagination } from "@/components/shared/Pagination";
+import { usePagination } from "@/components/shared/usePagination";
 
 interface Props {
   onFilterBoard: (milestoneTitle: string) => void;
@@ -48,13 +50,28 @@ export function MilestoneView({ onFilterBoard }: Props) {
       {milestones.length === 0 ? (
         <p className="text-zinc-500 text-sm">No milestones found</p>
       ) : (
-        <div className="space-y-3">
-          {milestones.map((m) => (
-            <MilestoneCard key={m.id} milestone={m} onFilter={() => onFilterBoard(m.title)} />
-          ))}
-        </div>
+        <MilestoneList milestones={milestones} onFilterBoard={onFilterBoard} />
       )}
     </div>
+  );
+}
+
+function MilestoneList({ milestones, onFilterBoard }: { milestones: Milestone[]; onFilterBoard: (title: string) => void }) {
+  const { page, pageItems, totalItems, setPage } = usePagination(milestones);
+
+  return (
+    <>
+      <div className="space-y-3">
+        {pageItems.map((m) => (
+          <MilestoneCard key={m.id} milestone={m} onFilter={() => onFilterBoard(m.title)} />
+        ))}
+      </div>
+      <Pagination
+        currentPage={page}
+        totalItems={totalItems}
+        onPageChange={setPage}
+      />
+    </>
   );
 }
 

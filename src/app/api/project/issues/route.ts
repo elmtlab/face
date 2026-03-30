@@ -16,8 +16,18 @@ export async function GET(req: Request) {
     search: url.searchParams.get("search") ?? undefined,
   };
 
-  const issues = await provider.listIssues(filter);
-  return NextResponse.json({ issues });
+  const allIssues = await provider.listIssues(filter);
+
+  const page = Math.max(1, parseInt(url.searchParams.get("page") ?? "1", 10) || 1);
+  const limit = Math.max(1, Math.min(100, parseInt(url.searchParams.get("limit") ?? "0", 10) || 0));
+
+  if (limit > 0) {
+    const offset = (page - 1) * limit;
+    const issues = allIssues.slice(offset, offset + limit);
+    return NextResponse.json({ issues, total: allIssues.length, page, limit });
+  }
+
+  return NextResponse.json({ issues: allIssues });
 }
 
 export async function POST(req: Request) {
