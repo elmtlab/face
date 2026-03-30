@@ -30,6 +30,7 @@ interface PullRequestInfo {
   repo: string;
   branch: string;
   status: "open" | "merged" | "closed";
+  conflicted?: boolean;
 }
 
 interface WorkflowState {
@@ -698,13 +699,20 @@ function ImplementingView({
   onTaskRestarted: (newTaskId: string) => void;
 }) {
   const [restarting, setRestarting] = useState(false);
+  const [taskCompleted, setTaskCompleted] = useState(false);
 
   const handleStatusChange = useCallback(
     (status: string) => {
-      // Only auto-advance on success, not on failure
-      if (status === "completed") onDone();
+      // When a PR workflow is expected, don't mark done on task completion —
+      // the PR merge poller will handle the "done" transition.
+      // Only auto-advance for non-PR workflows (no issue linked).
+      if (status === "completed" && !workflow.issueId) {
+        onDone();
+      } else if (status === "completed") {
+        setTaskCompleted(true);
+      }
     },
-    [onDone]
+    [onDone, workflow.issueId]
   );
 
   const handleRestart = useCallback(
@@ -765,6 +773,34 @@ function ImplementingView({
 
       {restarting && (
         <p className="text-xs text-indigo-400 animate-pulse">Restarting task...</p>
+      )}
+
+      {taskCompleted && workflow.issueId && !workflow.pr?.conflicted && (
+        <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-indigo-600/10 border border-indigo-600/20">
+          <span className="text-indigo-400 text-sm animate-pulse">&#x231B;</span>
+          <span className="text-xs text-indigo-300">
+            Task completed — waiting for PR to be created and merged
+          </span>
+          {workflow.pr?.url && (
+            <a
+              href={workflow.pr.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs text-indigo-400 hover:text-indigo-300 ml-auto"
+            >
+              View PR ↗
+            </a>
+          )}
+        </div>
+      )}
+
+      {workflow.pr?.conflicted && (
+        <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-red-600/10 border border-red-600/20">
+          <span className="text-red-400 text-sm">!</span>
+          <span className="text-xs text-red-300">
+            Branch has conflicts with main that need manual resolution before a PR can be created
+          </span>
+        </div>
       )}
     </div>
   );
