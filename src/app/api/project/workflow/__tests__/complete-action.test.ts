@@ -78,6 +78,18 @@ describe("complete action", () => {
     expect(addComment).toHaveBeenCalledWith("123", expect.stringContaining("completed"));
   });
 
+  it("should return current state if already done (idempotent)", async () => {
+    const workflow = buildWorkflow({ phase: "done" });
+    mockedLoadWorkflow.mockReturnValue(workflow as any);
+
+    const response = await POST(makeRequest({ action: "complete" }), makeParams());
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.workflow.phase).toBe("done");
+    expect(mockedSaveWorkflow).not.toHaveBeenCalled();
+  });
+
   it("should reject if not in implementing phase", async () => {
     const workflow = buildWorkflow({ phase: "gathering" });
     mockedLoadWorkflow.mockReturnValue(workflow as any);
