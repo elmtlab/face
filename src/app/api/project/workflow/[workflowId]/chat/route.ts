@@ -4,12 +4,14 @@ import {
   saveWorkflow,
   buildGatheringSystemPrompt,
   buildPlanningPrompt,
+  buildImplementationPrompt,
+  buildReimplementationPrompt,
   type ChatMessage,
   type GeneratedStory,
+  type RequirementRevision,
 } from "@/lib/project/workflow";
 import { getActiveProvider } from "@/lib/project/manager";
 import { submitTask } from "@/lib/tasks/runner";
-import { buildImplementationPrompt } from "@/lib/project/workflow";
 import { listProjects, getProject } from "@/lib/projects/store";
 
 /**
@@ -378,6 +380,84 @@ export async function POST(
     workflow.updatedAt = new Date().toISOString();
     saveWorkflow(workflow);
     return NextResponse.json({ workflow });
+  }
+
+  // ── Revise requirement & re-implement ──────────────────────────
+  if (body.action === "revise_requirement") {
+    if (workflow.phase !== "done" && workflow.phase !== "implementing") {
+      return NextResponse.json(
+        { error: "Requirement can only be revised after implementation (done or implementing phase)" },
+        { status: 400 }
+      );
+    }
+    if (!body.requirement || typeof body.requirement !== "string") {
+      return NextResponse.json(
+        { error: "requirement text is required" },
+        { status: 400 }
+      );
+    }
+    if (!workflow.generatedStory) {
+      return NextResponse.json(
+        { error: "No previous story to revise from" },
+        { status: 400 }
+      );
+    }
+
+    // 1. Snapshot current state as a revision
+    const version = (workflow.revisions?.length ?? 0) + 1;
+    const revision: RequirementRevision = {
+      version,
+      requirement: workflow.generatedStory.body,
+      story: { ...workflow.generatedStory },
+      taskId: workflow.taskId,
+      pr: workflow.pr ? { ...workflow.pr } : null,
+      timestamp: new Date().toISOString(),
+    };
+    if (!workflow.revisions) workflow.revisions = [];
+    workflow.revisions.push(revision);
+
+    // 2. Build re-implementation prompt
+    const prompt = buildReimplementationPrompt(
+      body.requirement,
+      workflow.generatedStory,
+      workflow.pr,
+      workflow.issueUrl ?? undefined,
+    );
+
+    // 3. Update the story body with the revised requirement
+    workflow.generatedStory = {
+      ...workflow.generatedStory,
+      body: body.requirement,
+    };
+
+    // 4. Spawn a new implementation task
+    const result = await submitTask("claude-code", prompt, {
+      title: `Revise: ${workflow.generatedStory.title} (v${version + 1})`,
+      creatorRole: workflow.creatorRole ?? undefined,
+      assignedRoles: workflow.assignedRoles.length > 0 ? workflow.assignedRoles : undefined,
+    });
+
+    if (result.error) {
+      return NextResponse.json({ error: result.error }, { status: 500 });
+    }
+
+    workflow.taskId = result.taskId;
+    workflow.phase = "implementing";
+    workflow.updatedAt = new Date().toISOString();
+    saveWorkflow(workflow);
+
+    // Comment on the issue about the revision
+    if (workflow.issueId) {
+      const provider = await getActiveProvider();
+      if (provider) {
+        await provider.addComment(
+          workflow.issueId,
+          `Requirement revised (v${version + 1}). Re-implementation started.\nFACE Task ID: \`${result.taskId}\``
+        );
+      }
+    }
+
+    return NextResponse.json({ workflow, taskId: result.taskId });
   }
 
   // ── Update project assignment ──────────────────────────────────
