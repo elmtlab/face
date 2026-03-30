@@ -23,7 +23,7 @@ export function AdaptiveShell() {
           )}
         </div>
         <Link
-          href={role === "engineer" ? "/dev" : role === "product_manager" ? "/pm" : "/dev"}
+          href={role === "engineer" ? "/dev" : role === "product_manager" ? "/product-manager" : role === "project_manager" ? "/project-manager" : "/dev"}
           className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
         >
           Role Dashboard

@@ -5,6 +5,7 @@ import type { RoleDefinition, SidebarLink } from "@/lib/roles/types";
 import { WidgetRenderer } from "./WidgetRenderer";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useActiveProject } from "@/components/projects/ProjectSelector";
 
 interface RoleDashboardProps {
   role: RoleDefinition;
@@ -19,6 +20,7 @@ export function RoleDashboard({ role }: RoleDashboardProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const viewParam = searchParams.get("view");
+  const { activeProjectId, projects, setActive: setActiveProject } = useActiveProject();
 
   // Resolve active view: match query param to a sidebar link key, fallback to null (overview)
   const resolveView = useCallback(
@@ -77,6 +79,21 @@ export function RoleDashboard({ role }: RoleDashboardProps) {
             FACE
           </Link>
         </div>
+
+        {/* Project switcher */}
+        {projects.length > 1 && (
+          <div className="border-b border-zinc-800 px-3 py-2">
+            <select
+              value={activeProjectId ?? ""}
+              onChange={(e) => setActiveProject(e.target.value || null)}
+              className="w-full rounded-md border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs text-zinc-300 focus:outline-none focus:ring-1 focus:ring-indigo-600"
+            >
+              {projects.map((p) => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+          </div>
+        )}
 
         <nav className="flex-1 overflow-y-auto p-3">
           <p className="mb-2 text-[10px] font-medium uppercase tracking-wider text-zinc-600">
@@ -169,6 +186,21 @@ export function RoleDashboard({ role }: RoleDashboardProps) {
                 </svg>
               </button>
             </div>
+
+            {/* Project switcher (mobile) */}
+            {projects.length > 1 && (
+              <div className="border-b border-zinc-800 px-4 py-2">
+                <select
+                  value={activeProjectId ?? ""}
+                  onChange={(e) => setActiveProject(e.target.value || null)}
+                  className="w-full rounded-md border border-zinc-700 bg-zinc-800 px-2 py-1.5 text-xs text-zinc-300 focus:outline-none focus:ring-1 focus:ring-indigo-600"
+                >
+                  {projects.map((p) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             <nav className="flex-1 overflow-y-auto p-4">
               <p className="mb-2 text-[10px] font-medium uppercase tracking-wider text-zinc-600">
