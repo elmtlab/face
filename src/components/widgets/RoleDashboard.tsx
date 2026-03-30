@@ -127,7 +127,14 @@ export function RoleDashboard({ role }: RoleDashboardProps) {
           </div>
         </nav>
 
-        <div className="border-t border-zinc-800 p-3">
+        <div className="border-t border-zinc-800 p-3 space-y-2">
+          <Link
+            href="/my"
+            className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-zinc-400 hover:bg-zinc-800/50 hover:text-zinc-200 transition-colors"
+          >
+            <span className="text-base">⚡</span>
+            <span className="truncate">My Dashboard</span>
+          </Link>
           <div className="flex items-center gap-2">
             <svg
               className="h-4 w-4 text-blue-400 flex-shrink-0"

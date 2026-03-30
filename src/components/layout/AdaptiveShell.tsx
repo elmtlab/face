@@ -22,12 +22,20 @@ export function AdaptiveShell() {
             </span>
           )}
         </div>
-        <Link
-          href={role === "engineer" ? "/dev" : role === "product_manager" ? "/product-manager" : role === "project_manager" ? "/project-manager" : "/dev"}
-          className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
-        >
-          Role Dashboard
-        </Link>
+        <div className="flex items-center gap-3">
+          <Link
+            href="/my"
+            className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
+          >
+            My Dashboard
+          </Link>
+          <Link
+            href={role === "engineer" ? "/dev" : role === "product_manager" ? "/product-manager" : role === "project_manager" ? "/project-manager" : "/dev"}
+            className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
+          >
+            Role Dashboard
+          </Link>
+        </div>
       </header>
 
       <main className="flex-1 flex flex-col p-3 md:p-4 lg:p-6 overflow-hidden">
