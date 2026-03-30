@@ -6,6 +6,7 @@ vi.mock("@/lib/project/workflow", () => ({
   buildGatheringSystemPrompt: vi.fn(),
   buildPlanningPrompt: vi.fn(),
   buildImplementationPrompt: vi.fn(),
+  buildReimplementationPrompt: vi.fn(),
 }));
 
 vi.mock("@/lib/project/manager", () => ({

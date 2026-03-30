@@ -33,6 +33,15 @@ interface PullRequestInfo {
   conflicted?: boolean;
 }
 
+interface RequirementRevision {
+  version: number;
+  requirement: string;
+  story: GeneratedStory | null;
+  taskId: string | null;
+  pr: PullRequestInfo | null;
+  timestamp: string;
+}
+
 interface WorkflowState {
   id: string;
   phase: Phase;
@@ -47,6 +56,7 @@ interface WorkflowState {
   creatorRole: string | null;
   assignedRoles: string[];
   projectId: string | null;
+  revisions: RequirementRevision[];
   createdAt: string;
   updatedAt: string;
 }
@@ -137,6 +147,7 @@ export function RequirementWorkflow({ workflowId, onClose, onCreated, activeProj
         creatorRole: null,
         assignedRoles: [],
         projectId: activeProjectId ?? null,
+        revisions: [],
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       });
@@ -330,6 +341,29 @@ export function RequirementWorkflow({ workflowId, onClose, onCreated, activeProj
               );
               onCreated();
             }}
+            onRevise={async (requirement: string) => {
+              if (!workflow.id || loading) return;
+              setLoading(true);
+              setError(null);
+              try {
+                const res = await fetch(`/api/project/workflow/${workflow.id}/chat`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ action: "revise_requirement", requirement }),
+                });
+                const data = await res.json();
+                if (data.workflow) {
+                  setWorkflow(data.workflow);
+                  onCreated();
+                }
+                if (data.error) setError(data.error);
+              } catch (e) {
+                setError((e as Error).message);
+              } finally {
+                setLoading(false);
+              }
+            }}
+            loading={loading}
           />
         )}
       </div>
@@ -815,13 +849,20 @@ function DoneView({
   workflow,
   onClose,
   onReopen,
+  onRevise,
+  loading: parentLoading,
 }: {
   workflow: WorkflowState;
   onClose: () => void;
   onReopen: (newTaskId: string) => void;
+  onRevise: (requirement: string) => Promise<void>;
+  loading: boolean;
 }) {
   const [taskFailed, setTaskFailed] = useState(false);
   const [restarting, setRestarting] = useState(false);
+  const [editMode, setEditMode] = useState(false);
+  const [editText, setEditText] = useState(workflow.generatedStory?.body ?? "");
+  const [showRevisions, setShowRevisions] = useState(false);
 
   const handleStatusChange = useCallback((status: string) => {
     if (status === "failed" || status === "cancelled") {
@@ -834,12 +875,10 @@ function DoneView({
       if (restarting || !workflow.id) return;
       setRestarting(true);
       try {
-        // 1. Restart the task
         const res = await fetch(`/api/tasks/${taskId}/restart`, { method: "POST" });
         const data = await res.json();
         if (!data.taskId) return;
 
-        // 2. Reopen the workflow
         await fetch(`/api/project/workflow/${workflow.id}/chat`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -855,6 +894,13 @@ function DoneView({
     },
     [restarting, workflow.id, onReopen]
   );
+
+  const handleRevise = async () => {
+    if (!editText.trim() || parentLoading) return;
+    await onRevise(editText.trim());
+  };
+
+  const currentVersion = (workflow.revisions?.length ?? 0) + 1;
 
   return (
     <div className="p-6 space-y-4 max-w-2xl mx-auto">
@@ -873,7 +919,7 @@ function DoneView({
           <p className="text-xs text-zinc-500">
             {taskFailed
               ? "The AI agent encountered an error while working on this story"
-              : "The AI agent has finished working on this story"}
+              : `The AI agent has finished working on this story${currentVersion > 1 ? ` (v${currentVersion})` : ""}`}
           </p>
         </div>
       </div>
@@ -885,10 +931,50 @@ function DoneView({
           rel="noopener noreferrer"
           className="block text-xs text-indigo-400 hover:text-indigo-300"
         >
-          GitHub Issue: {workflow.issueUrl} ↗
+          GitHub Issue: {workflow.issueUrl} &#x2197;
         </a>
       )}
 
+      {/* Delivered summary */}
+      {workflow.generatedStory && (
+        <div className="bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden">
+          <div className="px-4 py-3 border-b border-zinc-800 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <h4 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">
+                Delivered Requirement
+              </h4>
+              {currentVersion > 1 && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-600/20 text-indigo-400 border border-indigo-600/30">
+                  v{currentVersion}
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              {workflow.pr?.url && (
+                <a
+                  href={workflow.pr.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[10px] px-2 py-0.5 rounded bg-zinc-800 text-indigo-400 hover:text-indigo-300"
+                >
+                  PR #{workflow.pr.number} &#x2197;
+                </a>
+              )}
+              <span className="text-[10px] px-2 py-0.5 rounded bg-zinc-800 text-zinc-400 capitalize">
+                {workflow.generatedStory.priority}
+              </span>
+            </div>
+          </div>
+          <div className="p-4">
+            <h4 className="text-sm font-medium text-zinc-100 mb-2">{workflow.generatedStory.title}</h4>
+            <div className="text-xs text-zinc-400 whitespace-pre-wrap leading-relaxed max-h-48 overflow-y-auto">
+              {workflow.generatedStory.body}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Task execution result */}
       {workflow.taskId && (
         <TaskStatusPanel
           taskId={workflow.taskId}
@@ -903,7 +989,7 @@ function DoneView({
 
       {workflow.pr?.status === "merged" && (
         <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-emerald-600/10 border border-emerald-600/20">
-          <span className="text-emerald-400 text-sm">✓</span>
+          <span className="text-emerald-400 text-sm">&#x2713;</span>
           <span className="text-xs text-emerald-300">
             Auto-completed via PR #{workflow.pr.number} merge
           </span>
@@ -914,8 +1000,103 @@ function DoneView({
               rel="noopener noreferrer"
               className="text-xs text-indigo-400 hover:text-indigo-300 ml-auto"
             >
-              View PR ↗
+              View PR &#x2197;
             </a>
+          )}
+        </div>
+      )}
+
+      {/* Edit / revise requirement */}
+      {workflow.generatedStory && !taskFailed && (
+        <div className="bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden">
+          <button
+            onClick={() => { setEditMode(!editMode); setEditText(workflow.generatedStory?.body ?? ""); }}
+            className="w-full px-4 py-3 flex items-center justify-between text-left hover:bg-zinc-800/50 transition-colors"
+          >
+            <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">
+              Revise Requirement
+            </span>
+            <span className="text-zinc-500 text-xs">{editMode ? "Cancel" : "Edit"}</span>
+          </button>
+          {editMode && (
+            <div className="p-4 border-t border-zinc-800 space-y-3">
+              <p className="text-[10px] text-zinc-500">
+                Edit the requirement below. The agent will build incrementally on the previous implementation.
+              </p>
+              <textarea
+                value={editText}
+                onChange={(e) => setEditText(e.target.value)}
+                rows={10}
+                className="w-full px-3 py-2 text-xs bg-zinc-950 border border-zinc-700 rounded-md focus:outline-none focus:border-indigo-500 text-zinc-200 placeholder-zinc-500 resize-y font-mono"
+              />
+              <div className="flex justify-end gap-2">
+                <button
+                  onClick={() => setEditMode(false)}
+                  className="px-3 py-1.5 text-xs rounded border border-zinc-700 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleRevise}
+                  disabled={parentLoading || !editText.trim() || editText.trim() === workflow.generatedStory?.body}
+                  className="px-4 py-1.5 text-xs rounded bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 transition-colors font-medium"
+                >
+                  {parentLoading ? "Submitting..." : "Save & Re-implement"}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Revision history */}
+      {workflow.revisions && workflow.revisions.length > 0 && (
+        <div className="bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden">
+          <button
+            onClick={() => setShowRevisions(!showRevisions)}
+            className="w-full px-4 py-3 flex items-center justify-between text-left hover:bg-zinc-800/50 transition-colors"
+          >
+            <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">
+              Revision History ({workflow.revisions.length} prior {workflow.revisions.length === 1 ? "version" : "versions"})
+            </span>
+            <span className="text-zinc-500 text-xs">{showRevisions ? "Hide" : "Show"}</span>
+          </button>
+          {showRevisions && (
+            <div className="border-t border-zinc-800 divide-y divide-zinc-800/50">
+              {[...workflow.revisions].reverse().map((rev) => (
+                <div key={rev.version} className="p-4 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400 border border-zinc-700">
+                        v{rev.version}
+                      </span>
+                      {rev.story && (
+                        <span className="text-xs text-zinc-300">{rev.story.title}</span>
+                      )}
+                    </div>
+                    <span className="text-[10px] text-zinc-600">
+                      {new Date(rev.timestamp).toLocaleDateString()}
+                    </span>
+                  </div>
+                  <div className="text-[10px] text-zinc-500 whitespace-pre-wrap leading-relaxed max-h-32 overflow-y-auto font-mono">
+                    {rev.requirement}
+                  </div>
+                  <div className="flex items-center gap-3 text-[10px] text-zinc-600">
+                    {rev.taskId && <span>Task: {rev.taskId.slice(0, 16)}...</span>}
+                    {rev.pr && (
+                      <a
+                        href={rev.pr.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-indigo-400 hover:text-indigo-300"
+                      >
+                        PR #{rev.pr.number} ({rev.pr.status}) &#x2197;
+                      </a>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
         </div>
       )}

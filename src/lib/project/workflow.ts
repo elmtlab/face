@@ -36,6 +36,16 @@ export interface PullRequestInfo {
   conflicted?: boolean;  // true when rebase onto base branch failed
 }
 
+/** A snapshot of a previous requirement revision before it was edited. */
+export interface RequirementRevision {
+  version: number;
+  requirement: string;          // the requirement text at this version
+  story: GeneratedStory | null; // the generated story at this version
+  taskId: string | null;        // the task that implemented this version
+  pr: PullRequestInfo | null;   // PR from this version
+  timestamp: string;
+}
+
 export interface WorkflowState {
   id: string;
   phase: "gathering" | "planning" | "review" | "approved" | "implementing" | "done";
@@ -53,6 +63,8 @@ export interface WorkflowState {
   assignedRoles: string[];
   /** Project this requirement belongs to */
   projectId: string | null;
+  /** History of requirement revisions (oldest first) */
+  revisions: RequirementRevision[];
   createdAt: string;
   updatedAt: string;
 }
@@ -79,6 +91,7 @@ export function loadWorkflow(id: string): WorkflowState | null {
     if (!("creatorRole" in raw)) raw.creatorRole = null;
     if (!("assignedRoles" in raw)) raw.assignedRoles = [];
     if (!("projectId" in raw)) raw.projectId = null;
+    if (!("revisions" in raw)) raw.revisions = [];
     return raw;
   } catch {
     return null;
@@ -116,6 +129,7 @@ export function createWorkflow(options?: { creatorRole?: string; assignedRoles?:
     creatorRole: options?.creatorRole ?? null,
     assignedRoles: options?.assignedRoles ?? [],
     projectId: options?.projectId ?? null,
+    revisions: [],
     createdAt: now,
     updatedAt: now,
   };
@@ -189,4 +203,34 @@ INSTRUCTIONS:
 - Follow existing code patterns in the repository
 - Before starting, run: git fetch origin main && git checkout -b <feature-branch> origin/main
 - Commit with clear messages referencing the issue`;
+}
+
+export function buildReimplementationPrompt(
+  updatedRequirement: string,
+  previousStory: GeneratedStory,
+  pr: PullRequestInfo | null,
+  issueUrl?: string,
+): string {
+  let previousContext = `PREVIOUS IMPLEMENTATION:\n`;
+  previousContext += `Title: ${previousStory.title}\n\n`;
+  previousContext += `${previousStory.body}\n`;
+  if (pr) {
+    previousContext += `\nPR: #${pr.number} (${pr.status}) on branch "${pr.branch}"`;
+    if (pr.url) previousContext += ` — ${pr.url}`;
+    previousContext += `\n`;
+  }
+
+  return `You are revising an existing implementation based on updated requirements. Build incrementally on what was already delivered — do NOT start from scratch.
+${issueUrl ? `\nISSUE: ${issueUrl}\n` : ""}
+${previousContext}
+UPDATED REQUIREMENT:
+${updatedRequirement}
+
+INSTRUCTIONS:
+- Review what was already implemented in the previous PR/branch
+- Only make changes needed to satisfy the updated requirement — leave prior work intact
+- If there is an existing feature branch, check it out and continue from there: git fetch origin && git checkout <branch>
+- If no branch exists, create one from main
+- Write clean, production-quality code
+- Commit with clear messages explaining what changed and why`;
 }

@@ -44,6 +44,7 @@ interface WorkflowState {
   creatorRole: string | null;
   assignedRoles: string[];
   projectId: string | null;
+  revisions?: { version: number; timestamp: string }[];
   createdAt: string;
   updatedAt: string;
 }
@@ -325,6 +326,11 @@ export function RequirementsView({ onSelectWorkflow, onNewWorkflow, activeProjec
                               </span>
                             ) : null;
                           })()}
+                          {(w.revisions?.length ?? 0) > 0 && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-600/20 text-indigo-400 border border-indigo-600/30">
+                              v{(w.revisions?.length ?? 0) + 1}
+                            </span>
+                          )}
                           <span className="text-[10px] text-zinc-600">
                             {new Date(w.updatedAt).toLocaleDateString()}
                           </span>
