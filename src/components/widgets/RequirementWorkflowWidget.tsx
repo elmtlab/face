@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { RequirementWorkflow } from "@/components/project/RequirementWorkflow";
+import { useProjectContext } from "@/lib/projects/ProjectContext";
 
 /**
  * Widget wrapper for RequirementWorkflow.
@@ -11,16 +12,7 @@ import { RequirementWorkflow } from "@/components/project/RequirementWorkflow";
 export function RequirementWorkflowWidget() {
   // Reset key to allow starting a fresh workflow after completing one
   const [workflowKey, setWorkflowKey] = useState(0);
-  const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
-
-  useEffect(() => {
-    fetch("/api/projects/active")
-      .then((r) => r.json())
-      .then((d) => {
-        if (d.project?.id) setActiveProjectId(d.project.id);
-      })
-      .catch(() => {});
-  }, []);
+  const { activeProjectId } = useProjectContext();
 
   return (
     <div className="min-h-[500px] -m-4 rounded-lg overflow-hidden border border-zinc-800">

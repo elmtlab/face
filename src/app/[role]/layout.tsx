@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { getRoleDefinition } from "@/lib/roles/registry";
 import { UserProvider } from "@/components/user/UserContext";
+import { ProjectProvider } from "@/lib/projects/ProjectContext";
 
 export async function generateMetadata({
   params,
@@ -23,7 +24,9 @@ export default function RoleLayout({
 }) {
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
-      <UserProvider>{children}</UserProvider>
+      <ProjectProvider>
+        <UserProvider>{children}</UserProvider>
+      </ProjectProvider>
     </div>
   );
 }

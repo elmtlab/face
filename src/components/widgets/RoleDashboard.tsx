@@ -5,7 +5,7 @@ import type { RoleDefinition, SidebarLink } from "@/lib/roles/types";
 import { WidgetRenderer } from "./WidgetRenderer";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useActiveProject } from "@/components/projects/ProjectSelector";
+import { useProjectContext } from "@/lib/projects/ProjectContext";
 
 interface RoleDashboardProps {
   role: RoleDefinition;
@@ -20,7 +20,7 @@ export function RoleDashboard({ role }: RoleDashboardProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const viewParam = searchParams.get("view");
-  const { activeProjectId, projects, setActive: setActiveProject } = useActiveProject();
+  const { activeProjectId, projects, setActive: setActiveProject } = useProjectContext();
 
   // Resolve active view: match query param to a sidebar link key, fallback to null (overview)
   const resolveView = useCallback(

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { useProjectContext } from "@/lib/projects/ProjectContext";
 
 interface Project {
   id: string;
@@ -15,8 +16,8 @@ interface Project {
  * Used as a widget or standalone view in role dashboards.
  */
 export function ProjectManager() {
+  const { activeProjectId, setActive: setGlobalActive } = useProjectContext();
   const [projects, setProjects] = useState<Project[]>([]);
-  const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
@@ -28,14 +29,9 @@ export function ProjectManager() {
 
   const fetchProjects = useCallback(async () => {
     try {
-      const [projRes, activeRes] = await Promise.all([
-        fetch("/api/projects"),
-        fetch("/api/projects/active"),
-      ]);
+      const projRes = await fetch("/api/projects");
       const projData = await projRes.json();
-      const activeData = await activeRes.json();
       setProjects(projData.projects ?? []);
-      setActiveProjectId(activeData.project?.id ?? null);
     } catch {
       setError("Failed to load projects");
     } finally {
@@ -110,12 +106,7 @@ export function ProjectManager() {
 
   const handleSetActive = async (id: string) => {
     try {
-      await fetch("/api/projects/active", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId: id }),
-      });
-      setActiveProjectId(id);
+      await setGlobalActive(id);
     } catch {
       setError("Failed to set active project");
     }
