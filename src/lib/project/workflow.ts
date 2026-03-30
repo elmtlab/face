@@ -33,6 +33,7 @@ export interface PullRequestInfo {
   repo: string;          // "owner/repo"
   branch: string;
   status: "open" | "merged" | "closed"; // tracks current PR state
+  conflicted?: boolean;  // true when rebase onto base branch failed
 }
 
 export interface WorkflowState {
@@ -170,6 +171,6 @@ INSTRUCTIONS:
 - Implement all acceptance criteria
 - Write clean, production-quality code
 - Follow existing code patterns in the repository
-- Create a new branch for this work
+- Before starting, run: git fetch origin main && git checkout -b <feature-branch> origin/main
 - Commit with clear messages referencing the issue`;
 }

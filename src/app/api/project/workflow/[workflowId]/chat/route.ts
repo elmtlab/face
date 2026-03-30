@@ -318,22 +318,16 @@ export async function POST(
         { status: 400 }
       );
     }
+
+    // If this workflow has a linked issue (PR-based workflow), don't mark done —
+    // the PR merge poller will transition to "done" when the PR is merged.
+    if (workflow.issueId) {
+      return NextResponse.json({ workflow });
+    }
+
     workflow.phase = "done";
     workflow.updatedAt = new Date().toISOString();
     saveWorkflow(workflow);
-
-    // Close the linked GitHub issue
-    if (workflow.issueId) {
-      const provider = await getActiveProvider();
-      if (provider) {
-        try {
-          await provider.updateIssue(workflow.issueId, { status: "done" });
-          await provider.addComment(workflow.issueId, "Implementation completed. Closing issue.");
-        } catch {
-          // best-effort
-        }
-      }
-    }
 
     return NextResponse.json({ workflow });
   }

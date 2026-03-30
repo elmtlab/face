@@ -54,9 +54,56 @@ export async function createPRForCompletedTask(task: FaceTask): Promise<void> {
       return;
     }
 
+    // Fetch latest base branch before pushing or creating PR
+    try {
+      execSync(`git fetch origin ${baseBranch}`, { cwd, encoding: "utf-8", stdio: "pipe" });
+    } catch {
+      // best-effort — remote may not be reachable
+    }
+
+    // Rebase onto latest base branch to minimize merge conflicts
+    try {
+      execSync(`git rebase origin/${baseBranch}`, { cwd, encoding: "utf-8", stdio: "pipe" });
+    } catch {
+      // Rebase failed — abort and report conflict
+      try {
+        execSync("git rebase --abort", { cwd, encoding: "utf-8", stdio: "pipe" });
+      } catch {
+        // already aborted or not in rebase state
+      }
+      console.error(
+        `[face] Rebase of ${branch} onto origin/${baseBranch} failed — conflicts need manual resolution`,
+      );
+      // Update workflow to surface the conflict to the user
+      const fresh = loadWorkflow(workflow.id);
+      if (fresh) {
+        fresh.pr = {
+          number: 0,
+          url: "",
+          repo: gh.getRepo(),
+          branch,
+          status: "open",
+          conflicted: true,
+        };
+        fresh.updatedAt = new Date().toISOString();
+        saveWorkflow(fresh);
+      }
+      if (workflow.issueId) {
+        try {
+          await gh.addComment(
+            workflow.issueId,
+            `Could not auto-create PR: branch \`${branch}\` has conflicts with \`${baseBranch}\` that need manual resolution.`,
+          );
+        } catch {
+          // best-effort
+        }
+      }
+      return;
+    }
+
     // Ensure the branch is pushed to the remote
     try {
-      execSync(`git push -u origin ${branch}`, { cwd, encoding: "utf-8", stdio: "pipe" });
+      execSync(`git push -u origin ${branch} --force-with-lease`, { cwd, encoding: "utf-8", stdio: "pipe" });
     } catch {
       // May already be pushed or no remote — try anyway
     }

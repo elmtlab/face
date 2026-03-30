@@ -58,24 +58,17 @@ describe("complete action", () => {
     vi.clearAllMocks();
   });
 
-  it("should transition workflow to done and close GitHub issue", async () => {
-    const updateIssue = vi.fn().mockResolvedValue(undefined);
-    const addComment = vi.fn().mockResolvedValue(undefined);
-    mockedGetActiveProvider.mockResolvedValue({
-      updateIssue,
-      addComment,
-    } as any);
-
+  it("should not transition to done when issueId is present (PR-based workflow)", async () => {
     const workflow = buildWorkflow({ issueId: "123" });
     mockedLoadWorkflow.mockReturnValue(workflow as any);
 
     const response = await POST(makeRequest({ action: "complete" }), makeParams());
     const data = await response.json();
 
-    expect(data.workflow.phase).toBe("done");
-    expect(mockedSaveWorkflow).toHaveBeenCalledTimes(1);
-    expect(updateIssue).toHaveBeenCalledWith("123", { status: "done" });
-    expect(addComment).toHaveBeenCalledWith("123", expect.stringContaining("completed"));
+    // PR-based workflows stay in "implementing" — the PR merge poller handles "done"
+    expect(data.workflow.phase).toBe("implementing");
+    expect(mockedSaveWorkflow).not.toHaveBeenCalled();
+    expect(mockedGetActiveProvider).not.toHaveBeenCalled();
   });
 
   it("should return current state if already done (idempotent)", async () => {
@@ -117,21 +110,15 @@ describe("complete action", () => {
     expect(mockedGetActiveProvider).not.toHaveBeenCalled();
   });
 
-  it("should handle provider errors gracefully", async () => {
-    const updateIssue = vi.fn().mockRejectedValue(new Error("GitHub API down"));
-    const addComment = vi.fn().mockResolvedValue(undefined);
-    mockedGetActiveProvider.mockResolvedValue({
-      updateIssue,
-      addComment,
-    } as any);
-
+  it("should be a no-op for PR-based workflows even with provider errors", async () => {
     const workflow = buildWorkflow({ issueId: "123" });
     mockedLoadWorkflow.mockReturnValue(workflow as any);
 
     const response = await POST(makeRequest({ action: "complete" }), makeParams());
     const data = await response.json();
 
-    expect(data.workflow.phase).toBe("done");
-    expect(mockedSaveWorkflow).toHaveBeenCalled();
+    // PR-based workflows are deferred to the poller — no state change
+    expect(data.workflow.phase).toBe("implementing");
+    expect(mockedSaveWorkflow).not.toHaveBeenCalled();
   });
 });
