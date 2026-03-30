@@ -18,6 +18,14 @@ interface GeneratedStory {
 
 type Phase = "gathering" | "planning" | "review" | "approved" | "implementing" | "done";
 
+interface PullRequestInfo {
+  number: number;
+  url: string;
+  repo: string;
+  branch: string;
+  status: "open" | "merged" | "closed";
+}
+
 interface WorkflowState {
   id: string;
   phase: Phase;
@@ -28,6 +36,7 @@ interface WorkflowState {
   pmApproval: string;
   engApproval: string;
   taskId: string | null;
+  pr: PullRequestInfo | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -204,8 +213,11 @@ export function RequirementsView({ onSelectWorkflow, onNewWorkflow }: Props) {
                 w.messages.find((m) => m.role === "user")?.content.slice(0, 80) ??
                 "Untitled requirement";
               // For failed tasks, show implementing as the current phase (not done)
+              // For completed workflows, set index past the last phase so all steps show as done
               const displayPhase = failed ? "implementing" : w.phase;
-              const currentPhaseIdx = PHASES.findIndex((p) => p.key === displayPhase);
+              const currentPhaseIdx = displayPhase === "done"
+                ? PHASES.length
+                : PHASES.findIndex((p) => p.key === displayPhase);
 
               return (
                 <div key={w.id} className="rounded-lg border border-zinc-800 overflow-hidden">
@@ -256,6 +268,9 @@ export function RequirementsView({ onSelectWorkflow, onNewWorkflow }: Props) {
                           if (phase.key === "implementing" && w.taskId) {
                             const taskInfo = taskStatuses[w.taskId];
                             detail = taskInfo ? `Task: ${taskInfo.status}` : `Task: ${w.taskId.slice(0, 12)}...`;
+                          }
+                          if (phase.key === "done" && w.pr?.status === "merged") {
+                            detail = `Auto-completed via PR #${w.pr.number}`;
                           }
                           if (phase.key === "planning" && w.generatedStory) {
                             detail = "Story generated";

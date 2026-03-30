@@ -295,6 +295,10 @@ export async function POST(
 
   // ── Mark workflow complete ─────────────────────────────────────
   if (body.action === "complete") {
+    // Already done (e.g. auto-completed by PR merge poller) — return current state
+    if (workflow.phase === "done") {
+      return NextResponse.json({ workflow });
+    }
     if (workflow.phase !== "implementing") {
       return NextResponse.json(
         { error: "Only implementing workflows can be marked complete" },

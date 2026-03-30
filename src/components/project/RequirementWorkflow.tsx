@@ -22,6 +22,14 @@ interface GeneratedStory {
 type Phase = "gathering" | "planning" | "review" | "approved" | "implementing" | "done";
 type ApprovalStatus = "pending" | "approved" | "rejected";
 
+interface PullRequestInfo {
+  number: number;
+  url: string;
+  repo: string;
+  branch: string;
+  status: "open" | "merged" | "closed";
+}
+
 interface WorkflowState {
   id: string;
   phase: Phase;
@@ -32,6 +40,7 @@ interface WorkflowState {
   pmApproval: ApprovalStatus;
   engApproval: ApprovalStatus;
   taskId: string | null;
+  pr: PullRequestInfo | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -115,6 +124,7 @@ export function RequirementWorkflow({ workflowId, onClose, onCreated }: Props) {
         pmApproval: "pending",
         engApproval: "pending",
         taskId: null,
+        pr: null,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       });
@@ -817,6 +827,25 @@ function DoneView({
         <p className="text-xs text-indigo-400 animate-pulse">Restarting task...</p>
       )}
 
+      {workflow.pr?.status === "merged" && (
+        <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-emerald-600/10 border border-emerald-600/20">
+          <span className="text-emerald-400 text-sm">✓</span>
+          <span className="text-xs text-emerald-300">
+            Auto-completed via PR #{workflow.pr.number} merge
+          </span>
+          {workflow.pr.url && (
+            <a
+              href={workflow.pr.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs text-indigo-400 hover:text-indigo-300 ml-auto"
+            >
+              View PR ↗
+            </a>
+          )}
+        </div>
+      )}
+
       <div className="flex gap-3 pt-2">
         {taskFailed && workflow.taskId && (
           <button
@@ -827,16 +856,18 @@ function DoneView({
             {restarting ? "Restarting..." : "Retry Implementation"}
           </button>
         )}
-        <button
-          onClick={onClose}
-          className={`px-4 py-2 text-sm rounded-md ${
-            taskFailed
-              ? "border border-zinc-700 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800"
-              : "bg-indigo-600 hover:bg-indigo-500"
-          } transition-colors`}
-        >
-          {taskFailed ? "Close" : "Done"}
-        </button>
+        {!workflow.pr && (
+          <button
+            onClick={onClose}
+            className={`px-4 py-2 text-sm rounded-md ${
+              taskFailed
+                ? "border border-zinc-700 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800"
+                : "bg-indigo-600 hover:bg-indigo-500"
+            } transition-colors`}
+          >
+            {taskFailed ? "Close" : "Done"}
+          </button>
+        )}
       </div>
     </div>
   );
