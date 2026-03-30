@@ -46,6 +46,10 @@ export interface WorkflowState {
   engApproval: ApprovalStatus;
   taskId: string | null;        // FACE task ID once implementation starts
   pr: PullRequestInfo | null;   // PR created after implementation
+  /** Role slug of the user who created this requirement (e.g. "pm", "dev") */
+  creatorRole: string | null;
+  /** Role slugs relevant to this requirement (e.g. ["dev", "pm"]) */
+  assignedRoles: string[];
   createdAt: string;
   updatedAt: string;
 }
@@ -67,7 +71,11 @@ export function loadWorkflow(id: string): WorkflowState | null {
   const path = join(WORKFLOW_DIR, `${id}.json`);
   if (!existsSync(path)) return null;
   try {
-    return JSON.parse(readFileSync(path, "utf-8"));
+    const raw = JSON.parse(readFileSync(path, "utf-8"));
+    // Backfill fields added after initial schema
+    if (!("creatorRole" in raw)) raw.creatorRole = null;
+    if (!("assignedRoles" in raw)) raw.assignedRoles = [];
+    return raw;
   } catch {
     return null;
   }
@@ -90,7 +98,7 @@ export function listWorkflows(): WorkflowState[] {
     .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
 }
 
-export function createWorkflow(): WorkflowState {
+export function createWorkflow(options?: { creatorRole?: string; assignedRoles?: string[] }): WorkflowState {
   const id = `wf-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
   const now = new Date().toISOString();
   const w: WorkflowState = {
@@ -104,6 +112,8 @@ export function createWorkflow(): WorkflowState {
     engApproval: "pending",
     taskId: null,
     pr: null,
+    creatorRole: options?.creatorRole ?? null,
+    assignedRoles: options?.assignedRoles ?? [],
     createdAt: now,
     updatedAt: now,
   };

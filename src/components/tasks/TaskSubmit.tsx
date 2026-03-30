@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { useRoleSlug } from "@/components/shared/useRoleSlug";
 
 interface Agent {
   id: string;
@@ -25,6 +26,7 @@ export function TaskSubmit({
     type: "success" | "error";
   } | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const { currentSlug: userRoleSlug } = useRoleSlug();
 
   useEffect(() => {
     fetch("/api/agents")
@@ -58,6 +60,8 @@ export function TaskSubmit({
         body: JSON.stringify({
           agentId: selectedAgent,
           prompt: prompt.trim(),
+          creatorRole: userRoleSlug ?? undefined,
+          assignedRoles: userRoleSlug ? [userRoleSlug] : undefined,
         }),
       });
       const data = await res.json();

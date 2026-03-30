@@ -63,6 +63,8 @@ export async function submitTask(
     workingDirectory?: string;
     title?: string;
     linkedIssue?: number;
+    creatorRole?: string;
+    assignedRoles?: string[];
   }
 ): Promise<{ taskId: string; error?: string }> {
   const config = readConfig();
@@ -96,6 +98,8 @@ export async function submitTask(
     activities: [],
     result: null,
     linkedIssue: options?.linkedIssue,
+    creatorRole: options?.creatorRole,
+    assignedRoles: options?.assignedRoles,
   };
 
   // Write initial task file

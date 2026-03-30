@@ -134,10 +134,21 @@ export async function POST(
     }
 
     const story = workflow.generatedStory;
+
+    // Build labels: story labels + role tags
+    const labels = [...story.labels];
+    if (workflow.creatorRole) {
+      labels.push(`role:${workflow.creatorRole}`);
+    }
+    for (const role of workflow.assignedRoles) {
+      const tag = `role:${role}`;
+      if (!labels.includes(tag)) labels.push(tag);
+    }
+
     const issue = await provider.createIssue({
       title: story.title,
       body: story.body + `\n\n---\n_Priority: ${story.priority} | Effort: ${story.estimatedEffort} | Workflow: ${workflow.id}_`,
-      labels: story.labels,
+      labels,
     });
 
     workflow.issueId = issue.id;
@@ -231,6 +242,8 @@ export async function POST(
 
     const result = await submitTask("claude-code", prompt, {
       title: `Implement: ${workflow.generatedStory.title}`,
+      creatorRole: workflow.creatorRole ?? undefined,
+      assignedRoles: workflow.assignedRoles.length > 0 ? workflow.assignedRoles : undefined,
     });
 
     if (result.error) {
@@ -322,6 +335,21 @@ export async function POST(
       }
     }
 
+    return NextResponse.json({ workflow });
+  }
+
+  // ── Update assigned roles ──────────────────────────────────────
+  if (body.action === "update_roles") {
+    if (Array.isArray(body.assignedRoles)) {
+      workflow.assignedRoles = body.assignedRoles.filter(
+        (r: unknown) => typeof r === "string"
+      );
+    }
+    if (typeof body.creatorRole === "string") {
+      workflow.creatorRole = body.creatorRole;
+    }
+    workflow.updatedAt = new Date().toISOString();
+    saveWorkflow(workflow);
     return NextResponse.json({ workflow });
   }
 

@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { RoleTagBadge } from "@/components/shared/RoleTagBadge";
+import { useRoleSlug } from "@/components/shared/useRoleSlug";
 
 interface ChatMessage {
   role: "user" | "assistant";
@@ -37,6 +39,8 @@ interface WorkflowState {
   engApproval: string;
   taskId: string | null;
   pr: PullRequestInfo | null;
+  creatorRole: string | null;
+  assignedRoles: string[];
   createdAt: string;
   updatedAt: string;
 }
@@ -88,6 +92,15 @@ export function RequirementsView({ onSelectWorkflow, onNewWorkflow }: Props) {
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [taskStatuses, setTaskStatuses] = useState<Record<string, TaskInfo>>({});
   const [restartingId, setRestartingId] = useState<string | null>(null);
+  const [roleFilter, setRoleFilter] = useState<string>("all");
+  const { currentSlug, roles } = useRoleSlug();
+
+  const filteredWorkflows = workflows.filter((w) => {
+    if (roleFilter === "all") return true;
+    const slug = roleFilter === "mine" ? currentSlug : roleFilter;
+    if (!slug) return true;
+    return w.creatorRole === slug || (w.assignedRoles ?? []).includes(slug);
+  });
 
   useEffect(() => {
     const fetchWorkflows = () => {
@@ -181,17 +194,34 @@ export function RequirementsView({ onSelectWorkflow, onNewWorkflow }: Props) {
       {/* Header */}
       <div className="px-6 py-4 border-b border-zinc-800 flex items-center justify-between">
         <h2 className="text-sm font-semibold text-zinc-200">Requirements</h2>
-        <button
-          onClick={onNewWorkflow}
-          className="px-3 py-1.5 text-xs rounded-md bg-indigo-600 hover:bg-indigo-500 transition-colors"
-        >
-          + New Requirement
-        </button>
+        <div className="flex items-center gap-2">
+          <select
+            value={roleFilter}
+            onChange={(e) => setRoleFilter(e.target.value)}
+            className="rounded-md border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs text-zinc-300 focus:outline-none focus:ring-1 focus:ring-blue-600"
+          >
+            <option value="all">All Roles</option>
+            <option value="mine">My Role{currentSlug ? ` (${currentSlug})` : ""}</option>
+            {roles.map((r) => (
+              <option key={r.slug} value={r.slug}>{r.label}</option>
+            ))}
+          </select>
+          <button
+            onClick={onNewWorkflow}
+            className="px-3 py-1.5 text-xs rounded-md bg-indigo-600 hover:bg-indigo-500 transition-colors"
+          >
+            + New Requirement
+          </button>
+        </div>
       </div>
 
       {/* Tree list */}
       <div className="flex-1 overflow-y-auto p-4">
-        {workflows.length === 0 ? (
+        {filteredWorkflows.length === 0 && workflows.length > 0 ? (
+          <div className="p-8 text-center">
+            <p className="text-zinc-500 text-sm">No requirements match the selected role filter</p>
+          </div>
+        ) : filteredWorkflows.length === 0 ? (
           <div className="p-8 text-center">
             <p className="text-zinc-500 text-sm mb-3">No requirements yet</p>
             <button
@@ -203,7 +233,7 @@ export function RequirementsView({ onSelectWorkflow, onNewWorkflow }: Props) {
           </div>
         ) : (
           <div className="space-y-2">
-            {workflows.map((w) => {
+            {filteredWorkflows.map((w) => {
               const isExpanded = expandedIds.has(w.id);
               const effectivePhase = getEffectivePhase(w, taskStatuses);
               const failed = effectivePhase === "failed";
@@ -239,6 +269,12 @@ export function RequirementsView({ onSelectWorkflow, onNewWorkflow }: Props) {
                       <div className="flex items-center justify-between gap-3">
                         <span className="text-sm text-zinc-200 truncate">{title}</span>
                         <div className="flex items-center gap-2 shrink-0">
+                          {w.creatorRole && (
+                            <RoleTagBadge role={w.creatorRole} variant="creator" />
+                          )}
+                          {(w.assignedRoles ?? []).map((r: string) => (
+                            <RoleTagBadge key={r} role={r} />
+                          ))}
                           <span className="text-[10px] text-zinc-600">
                             {new Date(w.updatedAt).toLocaleDateString()}
                           </span>
