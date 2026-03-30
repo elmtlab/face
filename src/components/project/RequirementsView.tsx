@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { RoleTagBadge } from "@/components/shared/RoleTagBadge";
 import { useRoleSlug } from "@/components/shared/useRoleSlug";
+import { Pagination } from "@/components/shared/Pagination";
+import { usePagination } from "@/components/shared/usePagination";
 
 interface ChatMessage {
   role: "user" | "assistant";
@@ -101,6 +103,12 @@ export function RequirementsView({ onSelectWorkflow, onNewWorkflow }: Props) {
     if (!slug) return true;
     return w.creatorRole === slug || (w.assignedRoles ?? []).includes(slug);
   });
+
+  const { page, pageItems: pagedWorkflows, totalItems, setPage, resetPage } = usePagination(filteredWorkflows);
+
+  useEffect(() => {
+    resetPage();
+  }, [roleFilter, resetPage]);
 
   useEffect(() => {
     const fetchWorkflows = () => {
@@ -233,12 +241,12 @@ export function RequirementsView({ onSelectWorkflow, onNewWorkflow }: Props) {
           </div>
         ) : (
           <div className="space-y-2">
-            {filteredWorkflows.map((w) => {
+            {pagedWorkflows.map((w) => {
               const isExpanded = expandedIds.has(w.id);
               const effectivePhase = getEffectivePhase(w, taskStatuses);
               const failed = effectivePhase === "failed";
               const cfg = PHASE_CONFIG[effectivePhase];
-              const title =
+              const title: string =
                 w.generatedStory?.title ??
                 w.messages.find((m) => m.role === "user")?.content.slice(0, 80) ??
                 "Untitled requirement";
@@ -417,6 +425,11 @@ export function RequirementsView({ onSelectWorkflow, onNewWorkflow }: Props) {
             })}
           </div>
         )}
+        <Pagination
+          currentPage={page}
+          totalItems={totalItems}
+          onPageChange={setPage}
+        />
       </div>
     </div>
   );

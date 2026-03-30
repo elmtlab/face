@@ -5,6 +5,8 @@ import type { FaceTask } from "@/lib/tasks/types";
 import { TaskRow } from "./TaskRow";
 import { TaskDetail } from "./TaskDetail";
 import { useRoleSlug } from "@/components/shared/useRoleSlug";
+import { Pagination } from "@/components/shared/Pagination";
+import { usePagination } from "@/components/shared/usePagination";
 
 export function TaskList() {
   const [tasks, setTasks] = useState<FaceTask[]>([]);
@@ -39,6 +41,13 @@ export function TaskList() {
     }
     return true;
   });
+
+  const { page, pageItems, totalItems, setPage, resetPage } = usePagination(filtered);
+
+  // Reset page when filters change
+  useEffect(() => {
+    resetPage();
+  }, [filter, roleFilter, resetPage]);
 
   async function handleDelete(taskId: string) {
     try {
@@ -113,7 +122,7 @@ export function TaskList() {
               </p>
             </div>
           ) : (
-            filtered.map((task) => (
+            pageItems.map((task) => (
               <TaskRow
                 key={task.id}
                 task={task}
@@ -125,6 +134,11 @@ export function TaskList() {
             ))
           )}
         </div>
+        <Pagination
+          currentPage={page}
+          totalItems={totalItems}
+          onPageChange={setPage}
+        />
       </div>
 
       {/* Detail column */}

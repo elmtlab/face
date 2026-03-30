@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import type { IssuePriority } from "@/lib/project/types";
+import { Pagination } from "@/components/shared/Pagination";
+import { usePagination } from "@/components/shared/usePagination";
 
 interface TriageSuggestion {
   issueId: string;
@@ -95,6 +97,8 @@ export function TriageView() {
     }
   };
 
+  const { page, pageItems: pagedSuggestions, totalItems, setPage } = usePagination(suggestions);
+
   const PRIORITY_OPTIONS: IssuePriority[] = ["urgent", "high", "medium", "low", "none"];
 
   return (
@@ -167,7 +171,7 @@ export function TriageView() {
                 </tr>
               </thead>
               <tbody>
-                {suggestions.map((s) => (
+                {pagedSuggestions.map((s) => (
                   <tr key={s.issueId} className="border-b border-zinc-800/50 hover:bg-zinc-800/30">
                     <td className="px-4 py-2.5">
                       <input
@@ -210,6 +214,11 @@ export function TriageView() {
               </tbody>
             </table>
           </div>
+          <Pagination
+            currentPage={page}
+            totalItems={totalItems}
+            onPageChange={setPage}
+          />
         </>
       )}
 
