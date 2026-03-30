@@ -1,20 +1,11 @@
-"use client";
-
-import { Suspense } from "react";
-import { ProjectDashboard } from "@/components/project/ProjectDashboard";
+import { redirect } from "next/navigation";
 
 /**
- * /project — Dual product manager / project manager dashboard.
+ * /project — Redirects to /product-manager.
  *
- * Renders the ProjectDashboard inside a Suspense boundary (required by
- * useSearchParams). The active view tab and sidebar selection are
- * persisted via URL query params (?role=product&view=requirements)
- * and localStorage.
+ * The dual Product Manager / Project Manager toggle has been replaced
+ * with separate pages at /product-manager and /project-manager.
  */
 export default function ProjectPage() {
-  return (
-    <Suspense>
-      <ProjectDashboard />
-    </Suspense>
-  );
+  redirect("/product-manager");
 }
