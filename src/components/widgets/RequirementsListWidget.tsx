@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { RequirementsView } from "@/components/project/RequirementsView";
 import { RequirementWorkflow } from "@/components/project/RequirementWorkflow";
+import { useProjectContext } from "@/lib/projects/ProjectContext";
 
 /**
  * Full requirements widget with phase timeline and inline workflow editing.
@@ -12,17 +13,7 @@ export function RequirementsListWidget() {
   const [selectedWorkflowId, setSelectedWorkflowId] = useState<string | null>(null);
   const [showWorkflow, setShowWorkflow] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
-  const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
-
-  // Load the active project on mount
-  useEffect(() => {
-    fetch("/api/projects/active")
-      .then((r) => r.json())
-      .then((d) => {
-        if (d.project?.id) setActiveProjectId(d.project.id);
-      })
-      .catch(() => {});
-  }, []);
+  const { activeProjectId } = useProjectContext();
 
   if (showWorkflow) {
     return (

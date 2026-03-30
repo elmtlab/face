@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { SetupFlow } from "@/components/setup/SetupFlow";
 import { AdaptiveShell } from "@/components/layout/AdaptiveShell";
 import { UserProvider } from "@/components/user/UserContext";
+import { ProjectProvider } from "@/lib/projects/ProjectContext";
 
 type AppState = "loading" | "setup" | "ready";
 
@@ -38,8 +39,10 @@ export default function Home() {
   }
 
   return (
-    <UserProvider>
-      <AdaptiveShell />
-    </UserProvider>
+    <ProjectProvider>
+      <UserProvider>
+        <AdaptiveShell />
+      </UserProvider>
+    </ProjectProvider>
   );
 }
