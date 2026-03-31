@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import {
   getPollIntervalMs,
   setPollIntervalMs,
+  pollNow,
 } from "@/lib/project/pr-poller";
 import { listWorkflows } from "@/lib/project/workflow";
 
@@ -24,6 +25,17 @@ export async function GET() {
     pollIntervalMs: getPollIntervalMs(),
     trackedPRs: tracked,
   });
+}
+
+/**
+ * POST /api/project/pr-poller
+ *
+ * Trigger an immediate poll of all implementing workflows.
+ * Clears backoff state so every workflow is checked fresh.
+ */
+export async function POST() {
+  const result = await pollNow();
+  return NextResponse.json(result);
 }
 
 /**

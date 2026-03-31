@@ -39,6 +39,10 @@ const globalForPoller = globalThis as unknown as {
 /**
  * Start the background poller. Safe to call multiple times — only
  * the first call creates the interval; subsequent calls are no-ops.
+ *
+ * On startup a catch-up poll runs that checks **all** implementing
+ * workflows regardless of backoff state, so merged PRs that were
+ * missed while the server was down are detected immediately.
  */
 export function startPRPoller(intervalMs?: number): void {
   if (globalForPoller.__facePRPollerTimer) return;
@@ -51,9 +55,11 @@ export function startPRPoller(intervalMs?: number): void {
 
   console.log(`[face] PR poller started (every ${interval / 1000}s)`);
 
-  // Run once immediately, then on interval
-  pollAllWorkflows().catch((err) =>
-    console.error("[face] PR poll error:", err),
+  // On startup, clear any stale backoff state and run a catch-up poll
+  // that checks ALL implementing workflows (not just those with open PRs)
+  retryBackoff.clear();
+  catchUpPoll().catch((err: unknown) =>
+    console.error("[face] PR catch-up poll error:", err),
   );
 
   globalForPoller.__facePRPollerTimer = setInterval(() => {
@@ -89,7 +95,66 @@ export function setPollIntervalMs(ms: number): void {
   startPRPoller(ms);
 }
 
+/**
+ * Trigger an immediate poll of all implementing workflows.
+ * Clears backoff state so every workflow is checked fresh.
+ * Returns the number of workflows that transitioned.
+ */
+export async function pollNow(): Promise<{ polled: number; transitioned: number }> {
+  retryBackoff.clear();
+  return catchUpPoll();
+}
+
 // ── Core loop ─────────────────────────────────────────────────────
+
+/**
+ * Catch-up poll: checks ALL implementing workflows that have a PR,
+ * regardless of pr.status or backoff. This catches PRs that were
+ * merged while the server was down (where pr.status is still "open"
+ * in the local JSON).
+ */
+async function catchUpPoll(): Promise<{ polled: number; transitioned: number }> {
+  if (globalForPoller.__facePRPollerRunning) return { polled: 0, transitioned: 0 };
+  globalForPoller.__facePRPollerRunning = true;
+
+  let polled = 0;
+  let transitioned = 0;
+
+  try {
+    const provider = await getActiveProvider();
+    if (!provider || provider.type !== "github") {
+      if (!provider) {
+        console.warn("[face] PR poller: getActiveProvider() returned null — no provider configured");
+      } else {
+        console.warn(`[face] PR poller: active provider is "${provider.type}", not github — skipping`);
+      }
+      return { polled, transitioned };
+    }
+
+    const gh = provider as GitHubProvider;
+
+    // Check all implementing workflows with a PR (not just status === "open")
+    const workflows = listWorkflows().filter(
+      (w) => w.phase === "implementing" && w.pr,
+    );
+
+    console.log(`[face] PR catch-up poll: checking ${workflows.length} implementing workflow(s)`);
+
+    for (const workflow of workflows) {
+      polled++;
+      await pollSingleWorkflow(gh, workflow);
+      // Reload to check if status changed
+      const after = loadWorkflow(workflow.id);
+      if (after && after.phase !== "implementing") {
+        transitioned++;
+      }
+    }
+  } finally {
+    globalForPoller.__facePRPollerRunning = false;
+  }
+
+  return { polled, transitioned };
+}
 
 async function pollAllWorkflows(): Promise<void> {
   // Prevent overlapping runs
@@ -98,7 +163,14 @@ async function pollAllWorkflows(): Promise<void> {
 
   try {
     const provider = await getActiveProvider();
-    if (!provider || provider.type !== "github") return;
+    if (!provider || provider.type !== "github") {
+      if (!provider) {
+        console.warn("[face] PR poller: getActiveProvider() returned null — no provider configured");
+      } else {
+        console.warn(`[face] PR poller: active provider is "${provider.type}", not github — skipping`);
+      }
+      return;
+    }
 
     const gh = provider as GitHubProvider;
 
