@@ -90,6 +90,7 @@ export function ProjectSetupChat({ onClose, onProjectCreated }: Props) {
   const [session, setSession] = useState<SetupSession | null>(null);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [streamingText, setStreamingText] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -128,7 +129,7 @@ export function ProjectSetupChat({ onClose, onProjectCreated }: Props) {
   // Auto-scroll
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [session?.messages.length]);
+  }, [session?.messages.length, streamingText]);
 
   // Focus input
   useEffect(() => {
@@ -149,6 +150,7 @@ export function ProjectSetupChat({ onClose, onProjectCreated }: Props) {
     setLoading(true);
     setError(null);
     setInput("");
+    setStreamingText("");
 
     // Optimistically show user message
     const userMsg: SetupMessage = {
@@ -164,15 +166,89 @@ export function ProjectSetupChat({ onClose, onProjectCreated }: Props) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sessionId: session.id, message: messageText }),
       });
-      const data = await res.json();
-      if (data.session) setSession(data.session);
-      if (data.error) setError(data.error);
+
+      const contentType = res.headers.get("content-type") ?? "";
+
+      if (contentType.includes("text/event-stream")) {
+        // Handle SSE streaming response
+        await readStream(res);
+      } else {
+        // Handle regular JSON response (fallback)
+        const data = await res.json();
+        if (data.session) setSession(data.session);
+        if (data.error) setError(data.error);
+        setStreamingText(null);
+      }
     } catch (e) {
       setError((e as Error).message);
+      setStreamingText(null);
     } finally {
       setLoading(false);
     }
   }, [session, input, loading]);
+
+  /** Read an SSE stream from the agent response. */
+  const readStream = async (res: Response) => {
+    const reader = res.body?.getReader();
+    if (!reader) return;
+
+    const decoder = new TextDecoder();
+    let buf = "";
+    let accumulated = "";
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buf += decoder.decode(value, { stream: true });
+
+        // Parse SSE events from buffer
+        let eventEnd: number;
+        while ((eventEnd = buf.indexOf("\n\n")) !== -1) {
+          const rawEvent = buf.slice(0, eventEnd);
+          buf = buf.slice(eventEnd + 2);
+
+          // Parse event type and data
+          let eventType = "";
+          let eventData = "";
+          for (const line of rawEvent.split("\n")) {
+            if (line.startsWith("event: ")) {
+              eventType = line.slice(7);
+            } else if (line.startsWith("data: ")) {
+              eventData = line.slice(6);
+            }
+          }
+
+          if (!eventData) continue;
+
+          try {
+            const parsed = JSON.parse(eventData);
+
+            if (eventType === "chunk") {
+              // Streaming text chunk — strip setup-action blocks from display
+              accumulated += parsed.text ?? "";
+              const displayText = accumulated.replace(/```setup-action\n[\s\S]*?\n```/g, "").trim();
+              setStreamingText(displayText);
+            } else if (eventType === "done") {
+              // Final session state
+              if (parsed.session) {
+                setSession(parsed.session);
+              }
+              setStreamingText(null);
+            } else if (eventType === "error") {
+              setError(parsed.error ?? "Agent error");
+              setStreamingText(null);
+            }
+          } catch {
+            // Invalid JSON in event data, skip
+          }
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
+  };
 
   const doAction = useCallback(async (action: string) => {
     if (!session || loading) return;
@@ -241,7 +317,31 @@ export function ProjectSetupChat({ onClose, onProjectCreated }: Props) {
           </div>
         ))}
 
-        {loading && (
+        {/* Streaming response bubble */}
+        {streamingText !== null && (
+          <div className="flex justify-start">
+            <div className="max-w-[80%] rounded-lg px-4 py-2.5 text-sm bg-zinc-800 text-zinc-200 border border-zinc-700">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-[10px] font-medium uppercase tracking-wider text-zinc-500">
+                  Setup Assistant
+                </span>
+              </div>
+              {streamingText ? (
+                <p className="whitespace-pre-wrap leading-relaxed">{streamingText}<span className="inline-block w-1.5 h-4 bg-indigo-400 animate-pulse ml-0.5 align-text-bottom" /></p>
+              ) : (
+                <div className="flex items-center gap-1.5">
+                  <div className="w-1.5 h-1.5 rounded-full bg-zinc-400 animate-bounce [animation-delay:0ms]" />
+                  <div className="w-1.5 h-1.5 rounded-full bg-zinc-400 animate-bounce [animation-delay:150ms]" />
+                  <div className="w-1.5 h-1.5 rounded-full bg-zinc-400 animate-bounce [animation-delay:300ms]" />
+                  <span className="text-xs text-zinc-500 ml-2">Thinking...</span>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Non-streaming loading indicator */}
+        {loading && streamingText === null && (
           <div className="flex justify-start">
             <div className="max-w-[80%] rounded-lg px-4 py-2.5 text-sm bg-zinc-800 text-zinc-200 border border-zinc-700">
               <div className="flex items-center gap-2 mb-1">
