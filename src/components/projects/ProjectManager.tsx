@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useProjectContext } from "@/lib/projects/ProjectContext";
+import { ProjectSetupChat } from "./ProjectSetupChat";
 
 interface Project {
   id: string;
@@ -16,10 +17,11 @@ interface Project {
  * Used as a widget or standalone view in role dashboards.
  */
 export function ProjectManager() {
-  const { activeProjectId, setActive: setGlobalActive } = useProjectContext();
+  const { activeProjectId, setActive: setGlobalActive, refreshProjects } = useProjectContext();
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [showSetupChat, setShowSetupChat] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [formName, setFormName] = useState("");
   const [formRepoLink, setFormRepoLink] = useState("");
@@ -132,17 +134,43 @@ export function ProjectManager() {
     );
   }
 
+  // Show conversational setup chat overlay
+  if (showSetupChat) {
+    return (
+      <div className="h-[600px] border border-zinc-800 rounded-lg overflow-hidden">
+        <ProjectSetupChat
+          onClose={() => {
+            setShowSetupChat(false);
+            fetchProjects();
+          }}
+          onProjectCreated={() => {
+            fetchProjects();
+            refreshProjects();
+          }}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
       {/* Header */}
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-semibold text-zinc-200">Projects</h3>
-        <button
-          onClick={openAddForm}
-          className="px-3 py-1.5 text-xs rounded-md bg-indigo-600 hover:bg-indigo-500 transition-colors"
-        >
-          + Add Project
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowSetupChat(true)}
+            className="px-3 py-1.5 text-xs rounded-md bg-indigo-600 hover:bg-indigo-500 transition-colors"
+          >
+            + New Project
+          </button>
+          <button
+            onClick={openAddForm}
+            className="px-3 py-1.5 text-xs rounded-md border border-zinc-700 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors"
+          >
+            Quick Add
+          </button>
+        </div>
       </div>
 
       {error && (
@@ -198,11 +226,14 @@ export function ProjectManager() {
         <div className="p-8 text-center">
           <p className="text-zinc-500 text-sm mb-3">No projects yet</p>
           <button
-            onClick={openAddForm}
+            onClick={() => setShowSetupChat(true)}
             className="px-4 py-2 text-sm rounded-md bg-indigo-600 hover:bg-indigo-500 transition-colors"
           >
             Create your first project
           </button>
+          <p className="text-zinc-600 text-xs mt-2">
+            I&apos;ll guide you through connecting your PM tool and setting up your project.
+          </p>
         </div>
       ) : (
         <div className="space-y-2">

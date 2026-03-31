@@ -13,6 +13,7 @@ interface ProjectContextValue {
   projects: Project[];
   loaded: boolean;
   setActive: (id: string | null) => Promise<void>;
+  refreshProjects: () => Promise<void>;
 }
 
 const ProjectContext = createContext<ProjectContextValue>({
@@ -20,6 +21,7 @@ const ProjectContext = createContext<ProjectContextValue>({
   projects: [],
   loaded: false,
   setActive: async () => {},
+  refreshProjects: async () => {},
 });
 
 export function ProjectProvider({ children }: { children: ReactNode }) {
@@ -40,6 +42,19 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       .catch(() => setLoaded(true));
   }, []);
 
+  const refreshProjects = useCallback(async () => {
+    try {
+      const [projData, activeData] = await Promise.all([
+        fetch("/api/projects").then((r) => r.json()),
+        fetch("/api/projects/active").then((r) => r.json()),
+      ]);
+      setProjects(projData.projects ?? []);
+      setActiveProjectId(activeData.project?.id ?? null);
+    } catch {
+      // best-effort
+    }
+  }, []);
+
   const setActive = useCallback(async (id: string | null) => {
     setActiveProjectId(id);
     if (id) {
@@ -52,7 +67,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <ProjectContext.Provider value={{ activeProjectId, projects, loaded, setActive }}>
+    <ProjectContext.Provider value={{ activeProjectId, projects, loaded, setActive, refreshProjects }}>
       {children}
     </ProjectContext.Provider>
   );
