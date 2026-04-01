@@ -1,6 +1,6 @@
 import { spawn, ChildProcess } from "child_process";
 import { readConfig } from "./file-manager";
-import { writeTask, readAllTasks } from "./file-manager";
+import { writeTask, readTask, readAllTasks } from "./file-manager";
 import { eventBus } from "../events/bus";
 import type { FaceTask } from "./types";
 import { postCompletionComment } from "./github-notify";
@@ -50,6 +50,33 @@ const globalCleanup = globalThis as unknown as { __faceCleanupDone?: boolean };
 if (!globalCleanup.__faceCleanupDone) {
   globalCleanup.__faceCleanupDone = true;
   cleanupOrphanedTasks();
+}
+
+/**
+ * Determine the final task status by reconciling the in-memory task,
+ * the on-disk task (possibly updated by hooks), and the process exit code.
+ *
+ * Returns an object with the resolved status and any result/summary to adopt
+ * from the disk copy.
+ */
+export function resolveTaskStatus(
+  exitCode: number | null,
+  receivedResult: boolean,
+  diskTask: FaceTask | null,
+): { status: FaceTask["status"]; result?: string; summary?: string } {
+  // If the hook already marked the task completed on disk, preserve that
+  if (diskTask?.status === "completed") {
+    return {
+      status: "completed",
+      result: diskTask.result ?? undefined,
+      summary: diskTask.summary ?? undefined,
+    };
+  }
+  // A result event from the agent stream means the task produced output
+  if (receivedResult || exitCode === 0) {
+    return { status: "completed" };
+  }
+  return { status: "failed" };
 }
 
 export function generateTaskId(): string {
@@ -164,6 +191,7 @@ function spawnClaudeCode(task: FaceTask, binaryPath: string): void {
   let lineBuf = ""; // buffer for partial lines from stdout
   let stepIndex = 0;
   let lastWriteAt = 0;
+  let receivedResult = false;
   const WRITE_THROTTLE_MS = 1000;
 
   /** Persist task to disk (throttled — at most once per second). */
@@ -217,6 +245,7 @@ function spawnClaudeCode(task: FaceTask, binaryPath: string): void {
     } else if (evt.type === "result") {
       // Final event — complete last step and capture result
       completeCurrentStep();
+      receivedResult = true;
       const resultText = (evt.result as string) ?? "";
       task.result = resultText;
       task.summary = resultText.slice(0, 200) || task.summary;
@@ -266,7 +295,17 @@ function spawnClaudeCode(task: FaceTask, binaryPath: string): void {
 
     completeCurrentStep();
 
-    task.status = code === 0 ? "completed" : "failed";
+    // Reconcile in-memory state, disk state, and exit code
+    const diskTask = readTask(task.id);
+    const resolved = resolveTaskStatus(code, receivedResult, diskTask);
+    task.status = resolved.status;
+    if (resolved.result && !task.result) {
+      task.result = resolved.result;
+    }
+    if (resolved.summary) {
+      task.summary = resolved.summary;
+    }
+
     task.updatedAt = new Date().toISOString();
 
     // If no result was captured from stream events, fall back to stderr
