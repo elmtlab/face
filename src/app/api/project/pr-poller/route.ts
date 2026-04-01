@@ -3,22 +3,26 @@ import {
   getPollIntervalMs,
   setPollIntervalMs,
   pollNow,
+  getLastErrors,
 } from "@/lib/project/pr-poller";
 import { listWorkflows } from "@/lib/project/workflow";
 
 /**
  * GET /api/project/pr-poller
  *
- * Returns the current poller configuration and tracked PRs.
+ * Returns the current poller configuration, tracked PRs, and any recent errors.
  */
 export async function GET() {
   const workflows = listWorkflows().filter((w) => w.pr);
+  const errors = getLastErrors();
+
   const tracked = workflows.map((w) => ({
     workflowId: w.id,
     phase: w.phase,
     pr: w.pr,
     taskId: w.taskId,
     issueId: w.issueId,
+    lastError: errors.get(w.id) ?? null,
   }));
 
   return NextResponse.json({
