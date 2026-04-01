@@ -198,9 +198,16 @@ function streamAgentResponse(session: SetupSessionState, userMessage: string): R
       };
 
       try {
-        const agentReply = await callAgent(session, userMessage, (chunk: string) => {
+        let agentReply = await callAgent(session, userMessage, (chunk: string) => {
           send("chunk", { text: chunk });
         });
+
+        // If agent returned empty/whitespace, use fallback
+        if (!agentReply.trim()) {
+          console.warn("[setup/chat] Agent returned empty response, using fallback.");
+          agentReply = fallbackResponse(session);
+          send("chunk", { text: agentReply });
+        }
 
         // Parse the reply for setup-action blocks
         const actionResult = await executeActions(session, agentReply);
@@ -256,7 +263,10 @@ async function callAgent(
   const agentPath = config?.agents?.["claude-code"]?.path;
 
   if (!agentPath) {
-    // Fallback: no agent available — use a simple heuristic response
+    console.warn(
+      "[setup/chat] No Claude Code agent path configured at config.agents.claude-code.path. " +
+        "Falling back to heuristic responses. Set the agent path in your config to enable AI-driven setup.",
+    );
     return fallbackResponse(session);
   }
 
@@ -329,11 +339,21 @@ async function callAgent(
       }
     });
 
-    child.on("close", () => {
-      resolve(fullText || fallbackResponse(session));
+    child.on("close", (code) => {
+      if (fullText) {
+        resolve(fullText);
+      } else {
+        if (code !== 0) {
+          console.error(
+            `[setup/chat] Agent process exited with code ${code} and produced no output.`,
+          );
+        }
+        resolve(fallbackResponse(session));
+      }
     });
 
-    child.on("error", () => {
+    child.on("error", (err) => {
+      console.error("[setup/chat] Agent process failed to start:", err.message);
       resolve(fallbackResponse(session));
     });
 
@@ -436,8 +456,45 @@ function fallbackResponse(session: SetupSessionState): string {
 
   // Greeting phase — determine project type
   if (session.phase === "greeting") {
-    const hasExisting = lc.includes("existing") || lc.includes("connect") || lc.includes("have") || lc.includes("github") || lc.includes("linear") || lc.includes("jira");
-    const wantsNew = lc.includes("new") || lc.includes("scratch") || lc.includes("create") || lc.includes("local");
+    const hasExisting =
+      lc.includes("existing") ||
+      lc.includes("connect") ||
+      lc.includes("have") ||
+      lc.includes("github") ||
+      lc.includes("linear") ||
+      lc.includes("jira") ||
+      lc.includes("import") ||
+      lc.includes("integrate") ||
+      lc.includes("link") ||
+      lc.includes("repo") ||
+      lc.includes("repository");
+    const wantsNew =
+      lc.includes("new") ||
+      lc.includes("scratch") ||
+      lc.includes("create") ||
+      lc.includes("local") ||
+      lc.includes("start") ||
+      lc.includes("set up") ||
+      lc.includes("setup") ||
+      lc.includes("build") ||
+      lc.includes("make") ||
+      lc.includes("begin") ||
+      lc.includes("init");
+    const describesProject =
+      lc.includes("project") ||
+      lc.includes("app") ||
+      lc.includes("application") ||
+      lc.includes("website") ||
+      lc.includes("site") ||
+      lc.includes("service") ||
+      lc.includes("api") ||
+      lc.includes("tool") ||
+      lc.includes("platform") ||
+      lc.includes("dashboard") ||
+      lc.includes("web") ||
+      lc.includes("mobile") ||
+      lc.includes("frontend") ||
+      lc.includes("backend");
 
     if (hasExisting && !wantsNew) {
       session.hasExistingProject = true;
@@ -450,6 +507,12 @@ function fallbackResponse(session: SetupSessionState): string {
       session.phase = "collecting";
       saveSession(session);
       return "Let's create a new project! What would you like to **name** your project?";
+    }
+    if (describesProject) {
+      session.hasExistingProject = false;
+      session.phase = "collecting";
+      saveSession(session);
+      return "Sounds great! Let's get that set up. What would you like to **name** your project?";
     }
     return "I'd like to understand your situation better. Do you:\n\n1. **Have an existing project** in GitHub, Linear, or Jira to connect?\n2. **Want to create a new project** from scratch?\n\nJust describe what you'd like to do.";
   }
@@ -476,8 +539,20 @@ function fallbackResponse(session: SetupSessionState): string {
         saveSession(session);
         return "GitHub it is! I'll need your **repository** in `owner/repo` format (or paste the full URL) and a **personal access token** with `repo` scope.\n\nWhat's your repository?";
       }
+      if (lc.includes("linear")) {
+        session.pmTool = "linear";
+        saveSession(session);
+        return "Linear it is! I'll need your **team ID** and a **Linear API key**.\n\nWhat's your team ID?";
+      }
+      if (lc.includes("jira")) {
+        session.pmTool = "jira";
+        saveSession(session);
+        return "Jira it is! I'll need your **Jira base URL** (e.g. `team.atlassian.net`), **project key**, **email**, and **API token**.\n\nWhat's your Jira base URL?";
+      }
       return "Which tool would you like? **GitHub**, **Linear**, **Jira**, or **Local**?";
     }
+    // Collecting phase but all fields filled — provide a contextual nudge
+    return "Let's continue setting up your project. Could you provide the information I asked about above?";
   }
 
   // Scaffolding phase
@@ -493,7 +568,7 @@ function fallbackResponse(session: SetupSessionState): string {
     return "Would you like me to create default labels, milestones, and board structure? Say **yes** or **no**.";
   }
 
-  return "I'm not sure I understood that. Could you rephrase or tell me more about what you'd like to do?";
+  return "I'm having trouble processing your request right now. Could you try rephrasing, or tell me whether you'd like to **create a new project** or **connect an existing one**?";
 }
 
 // ── Scaffolding ────────────────────────────────────────────────────
