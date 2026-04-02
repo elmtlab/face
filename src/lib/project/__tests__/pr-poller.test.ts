@@ -89,7 +89,7 @@ describe("PR poller", () => {
 
       const result = await pollNow();
 
-      expect(result).toEqual({ polled: 0, transitioned: 0 });
+      expect(result).toEqual({ polled: 0, transitioned: 0, errors: [] });
       expect(warnSpy).toHaveBeenCalledWith(
         expect.stringContaining("getActiveProvider() returned null"),
       );
@@ -103,7 +103,7 @@ describe("PR poller", () => {
 
       const result = await pollNow();
 
-      expect(result).toEqual({ polled: 0, transitioned: 0 });
+      expect(result).toEqual({ polled: 0, transitioned: 0, errors: [] });
       expect(warnSpy).toHaveBeenCalledWith(
         expect.stringContaining("not github"),
       );
@@ -187,8 +187,37 @@ describe("PR poller", () => {
 
       const result = await pollNow();
 
-      expect(result).toEqual({ polled: 0, transitioned: 0 });
+      expect(result).toEqual({ polled: 0, transitioned: 0, errors: [] });
       expect(gh.getPRStatus).not.toHaveBeenCalled();
+    });
+
+    it("surfaces errors from failed polls", async () => {
+      const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+      const gh = mockGitHubProvider("open");
+      gh.getPRStatus.mockRejectedValue(new Error("GitHub API 502: Bad Gateway"));
+      mockedGetActiveProvider.mockResolvedValue(gh as any);
+
+      const wf = buildWorkflow();
+      mockedListWorkflows.mockReturnValue([wf] as any);
+      mockedLoadWorkflow.mockReturnValue(wf as any);
+
+      const result = await pollNow();
+
+      expect(result.polled).toBe(1);
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors[0]).toEqual({
+        workflowId: "wf-test-1",
+        error: "GitHub API 502: Bad Gateway",
+      });
+      expect(errSpy).toHaveBeenCalledWith(
+        expect.stringContaining("PR poll failed"),
+        expect.stringContaining("502"),
+      );
+
+      errSpy.mockRestore();
+      logSpy.mockRestore();
     });
   });
 
@@ -234,6 +263,59 @@ describe("PR poller", () => {
         "42",
         expect.stringContaining("merged"),
       );
+    });
+  });
+
+  describe("handlePRMerged edge cases", () => {
+    it("logs error when workflow cannot be loaded during merge handling", async () => {
+      const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+      const gh = mockGitHubProvider("merged");
+      mockedGetActiveProvider.mockResolvedValue(gh as any);
+
+      const wf = buildWorkflow();
+      mockedListWorkflows.mockReturnValue([wf] as any);
+
+      // loadWorkflow returns null (corrupt/deleted file)
+      mockedLoadWorkflow
+        .mockReturnValueOnce(null) // for handlePRMerged
+        .mockReturnValueOnce(null); // for transition check in catchUpPoll
+
+      await pollNow();
+
+      expect(errSpy).toHaveBeenCalledWith(
+        expect.stringContaining("could not be loaded"),
+      );
+
+      errSpy.mockRestore();
+      logSpy.mockRestore();
+    });
+
+    it("logs warning when workflow phase is not implementing during merge", async () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+      const gh = mockGitHubProvider("merged");
+      mockedGetActiveProvider.mockResolvedValue(gh as any);
+
+      const wf = buildWorkflow();
+      mockedListWorkflows.mockReturnValue([wf] as any);
+
+      // loadWorkflow returns a workflow already in "done" phase
+      const doneWf = buildWorkflow({ phase: "done" });
+      mockedLoadWorkflow
+        .mockReturnValueOnce(doneWf as any) // for handlePRMerged
+        .mockReturnValueOnce(doneWf as any); // for transition check
+
+      await pollNow();
+
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('not "implementing"'),
+      );
+
+      warnSpy.mockRestore();
+      logSpy.mockRestore();
     });
   });
 

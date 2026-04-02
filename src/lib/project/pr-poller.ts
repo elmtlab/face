@@ -26,6 +26,9 @@ const MAX_RETRY_BACKOFF_MS = 15 * 60_000;     // 15 minutes ceiling
 /** Per-workflow retry state for transient failures. */
 const retryBackoff = new Map<string, number>();
 
+/** Per-workflow last-error tracking for diagnostics. */
+const lastErrors = new Map<string, { message: string; timestamp: string }>();
+
 // ── Singleton guard ───────────────────────────────────────────────
 
 const globalForPoller = globalThis as unknown as {
@@ -100,9 +103,22 @@ export function setPollIntervalMs(ms: number): void {
  * Clears backoff state so every workflow is checked fresh.
  * Returns the number of workflows that transitioned.
  */
-export async function pollNow(): Promise<{ polled: number; transitioned: number }> {
+export async function pollNow(): Promise<{ polled: number; transitioned: number; errors: Array<{ workflowId: string; error: string }> }> {
   retryBackoff.clear();
-  return catchUpPoll();
+  lastErrors.clear();
+  const result = await catchUpPoll();
+  const errors: Array<{ workflowId: string; error: string }> = [];
+  for (const [wfId, err] of lastErrors) {
+    errors.push({ workflowId: wfId, error: err.message });
+  }
+  return { ...result, errors };
+}
+
+/**
+ * Return per-workflow error state for diagnostics.
+ */
+export function getLastErrors(): ReadonlyMap<string, { message: string; timestamp: string }> {
+  return lastErrors;
 }
 
 // ── Core loop ─────────────────────────────────────────────────────
@@ -178,7 +194,13 @@ async function pollAllWorkflows(): Promise<void> {
       (w) => w.phase === "implementing" && w.pr && w.pr.status === "open",
     );
 
+    const now = Date.now();
     for (const workflow of workflows) {
+      // Skip workflows in backoff from transient failures
+      const backoffMs = retryBackoff.get(workflow.id);
+      if (backoffMs && backoffMs > now) {
+        continue;
+      }
       await pollSingleWorkflow(gh, workflow);
     }
   } finally {
@@ -206,13 +228,18 @@ async function pollSingleWorkflow(
     // status === "open" → nothing to do, check again next cycle
   } catch (err) {
     // Transient failure — apply exponential backoff before next attempt
-    const current = retryBackoff.get(workflow.id) ?? 1;
-    const next = Math.min(current * 2, MAX_RETRY_BACKOFF_MS);
-    retryBackoff.set(workflow.id, next);
+    const prevDelay = retryBackoff.get(workflow.id)
+      ? Math.max(retryBackoff.get(workflow.id)! - (Date.now() - MIN_POLL_INTERVAL_MS), MIN_POLL_INTERVAL_MS)
+      : MIN_POLL_INTERVAL_MS;
+    const delayMs = Math.min(prevDelay * 2, MAX_RETRY_BACKOFF_MS);
+    retryBackoff.set(workflow.id, Date.now() + delayMs);
 
-    console.warn(
-      `[face] PR poll failed for workflow ${workflow.id} PR #${pr.number} (retry backoff ${next / 1000}s):`,
-      (err as Error).message,
+    const errMsg = (err as Error).message;
+    lastErrors.set(workflow.id, { message: errMsg, timestamp: new Date().toISOString() });
+
+    console.error(
+      `[face] PR poll failed for workflow ${workflow.id} PR #${pr.number} (retry in ${delayMs / 1000}s):`,
+      errMsg,
     );
   }
 }
@@ -229,7 +256,14 @@ async function handlePRMerged(
 
   // 1. Update PR status on workflow
   const fresh = loadWorkflow(workflow.id);
-  if (!fresh || fresh.phase !== "implementing") return;
+  if (!fresh) {
+    console.error(`[face] PR merge handler: workflow ${workflow.id} could not be loaded — skipping transition`);
+    return;
+  }
+  if (fresh.phase !== "implementing") {
+    console.warn(`[face] PR merge handler: workflow ${workflow.id} is in phase "${fresh.phase}", not "implementing" — skipping transition`);
+    return;
+  }
 
   fresh.pr!.status = "merged";
 
@@ -281,7 +315,14 @@ async function handlePRClosedWithoutMerge(
   );
 
   const fresh = loadWorkflow(workflow.id);
-  if (!fresh || fresh.phase !== "implementing") return;
+  if (!fresh) {
+    console.error(`[face] PR close handler: workflow ${workflow.id} could not be loaded — skipping`);
+    return;
+  }
+  if (fresh.phase !== "implementing") {
+    console.warn(`[face] PR close handler: workflow ${workflow.id} is in phase "${fresh.phase}", not "implementing" — skipping`);
+    return;
+  }
 
   fresh.pr!.status = "closed";
   fresh.updatedAt = new Date().toISOString();
