@@ -7,8 +7,8 @@ import {
   sanitizeForClient,
   type SetupSessionState,
 } from "@/lib/projects/setup";
-import { createProject, setActiveProjectId } from "@/lib/projects/store";
-import { addProvider, listProviderConfigs } from "@/lib/project/manager";
+import { createProject, setActiveProjectId, listProjects } from "@/lib/projects/store";
+import { addProvider, getActiveProvider, listProviderConfigs } from "@/lib/project/manager";
 import { scaffoldProject, type ScaffoldResult } from "@/lib/projects/scaffold";
 import { readConfig } from "@/lib/tasks/file-manager";
 
@@ -100,9 +100,10 @@ export async function POST(req: Request) {
 function buildGreeting(): string {
   const existing = listProviderConfigs();
   if (existing.length > 0) {
-    return `Welcome! I'll help you set up a new project. I see you already have ${existing.length} provider connection(s) configured.\n\nDo you have an **existing project** in an external PM tool (like GitHub Projects, Linear, or Jira) that you'd like to connect? Or would you like to **create a new project** from scratch?\n\nYou can also just describe your project and I'll figure out the best way to set it up.`;
+    const providerList = existing.map((p) => `**${p.name}** (${p.type})`).join(", ");
+    return `Welcome! I'll help you set up a new project. I see you already have these PM tools connected: ${providerList}.\n\nTell me about your project — I'll check if it already exists in your connected tools and link it automatically, or create a new one if needed.\n\nJust describe what you're working on!`;
   }
-  return "Welcome! I'll help you set up your project in FACE.\n\nTell me about your project — do you have an existing repository or PM tool you'd like to connect? Or would you like to create a new project from scratch?\n\nFeel free to describe what you're working on and I'll guide you through the setup.";
+  return "Welcome! I'll help you set up your project in FACE.\n\nTell me about your project — what's it called, what's it about? If you have a repository or PM tool (GitHub, Linear, Jira), I can connect it too.\n\nI'll gather the details, show you a summary, and set everything up once you confirm.";
 }
 
 // ── Agent-driven conversation ──────────────────────────────────────
@@ -110,16 +111,24 @@ function buildGreeting(): string {
 function buildSystemPrompt(session: SetupSessionState): string {
   const existingProviders = listProviderConfigs();
 
+  // Build list of existing FACE projects for context
+  const faceProjects = listProjects();
+  const faceProjectsList = faceProjects.length > 0
+    ? faceProjects.map((p) => `"${p.name}" (id: ${p.id})`).join(", ")
+    : "none";
+
   return `You are a setup assistant for FACE, a project management tool. You're helping a user set up a new project through a conversational flow. Be friendly, concise, and helpful.
 
 ## YOUR CAPABILITIES
 - You have direct access to the user's filesystem, git repos, and environment
 - You can validate whether directories, repos, and files actually exist
 - You can inspect git remotes, branches, and project structure
+- You can check the connected PM tool for existing projects
 - Use these capabilities proactively to help the user — don't just ask, verify!
 
 ## CONTEXT
 - Already connected providers: ${existingProviders.length > 0 ? existingProviders.map((p) => `${p.name} (${p.type})`).join(", ") : "none"}
+- Existing FACE projects: ${faceProjectsList}
 - Current session phase: ${session.phase}
 - User chose existing project: ${session.hasExistingProject ?? "not decided yet"}
 - Chosen PM tool: ${session.pmTool ?? "not chosen yet"}
@@ -130,16 +139,25 @@ function buildSystemPrompt(session: SetupSessionState): string {
 - Has credentials: ${session.credentials ? "yes (stored securely)" : "no"}
 
 ## WHAT YOU NEED TO COLLECT
-To complete project setup, you need to gather this information:
-1. **Project type**: Is this connecting an existing external project, or creating a new one?
-2. **Project name**: A name for the project
-3. **Description** (optional): What the project is about
-4. **Goals** (optional): Main objectives
-5. **PM tool**: One of: github, linear, jira, or local (FACE-only, no external tool)
-6. **Credentials** (if external tool):
+Gather project configuration through natural conversation:
+1. **Project name**: A name for the project
+2. **Description** (optional): What the project is about
+3. **Goals** (optional): Main objectives
+4. **PM tool**: One of: github, linear, jira, or local (FACE-only, no external tool)
+5. **Credentials** (if external tool):
    - GitHub: repository (owner/repo) + personal access token (starts with ghp_ or github_pat_)
    - Linear: team ID + API key
    - Jira: base URL (*.atlassian.net) + project key + email + API token
+
+## CONVERSATIONAL FLOW
+Follow this flow naturally:
+1. **Ask questions** to understand what the user wants — project name, what it's about, which PM tool
+2. **Check for duplicates**: Before creating, ALWAYS check if the project already exists:
+   - If there's already a connected PM provider, use \`check_pm_tool\` to look for matching projects
+   - Check existing FACE projects listed above to avoid duplicates
+3. **If the project exists in the PM tool**: Offer to link it to FACE using \`link_project\` instead of creating a duplicate
+4. **Present a summary**: Before saving, show the user a summary of all gathered info and ask for explicit confirmation
+5. **Save only after confirmation**: Only output a create/connect/link action AFTER the user confirms the summary
 
 ## VALIDATION GUIDELINES
 - If the user mentions a directory path, CHECK if it exists on the filesystem
@@ -147,9 +165,21 @@ To complete project setup, you need to gather this information:
 - If the user gives a vague project description, look at the directory structure and README to suggest a better one
 - If the user gives a repo URL, extract the owner/repo from it
 - If something looks like a typo or partial input, ask a clarifying question rather than failing silently
+- Suggest sensible defaults where possible (e.g., infer project name from repo name)
 
 ## HOW TO OUTPUT ACTIONS
-When you have enough information to perform a setup action, include a fenced code block with the language tag \`setup-action\` in your response. The block must contain valid JSON.
+When you need to perform an action, include a fenced code block with the language tag \`setup-action\` in your response. The block must contain valid JSON.
+
+### To check PM tool for existing projects (use this BEFORE creating):
+\`\`\`setup-action
+{"action":"check_pm_tool","searchName":"optional search term"}
+\`\`\`
+The system will return a list of projects found in the connected PM tool. Use this to determine if the user's project already exists.
+
+### To link an existing PM tool project to FACE (when project already exists in PM tool):
+\`\`\`setup-action
+{"action":"link_project","name":"Project Name","description":"optional description","goals":"optional goals","repoLink":"optional repo URL","pmTool":"github","scope":"owner/repo","existingProviderName":"name of existing provider connection"}
+\`\`\`
 
 ### To create a local project (no external PM tool):
 \`\`\`setup-action
@@ -173,13 +203,15 @@ For Jira:
 
 ## RULES
 - Be conversational, not robotic. Adapt to what the user says.
+- The user can correct or adjust any information at any point — just update your understanding and re-confirm.
+- **ALWAYS present a summary and ask for confirmation before saving.** Example: "Here's what I have: [summary]. Shall I go ahead and set this up?"
 - If the user's input is vague or incomplete, ask a smart follow-up question. Don't fail silently.
 - If you can infer information (e.g., project name from a repo name), suggest it and confirm.
 - Ask ONE thing at a time when collecting credentials.
 - NEVER echo back tokens or secrets in your visible text.
 - When you discover something about the user's codebase (e.g., by reading git config), share what you found and suggest how to proceed.
 - Keep responses short — 1-4 sentences plus any necessary options.
-- Only output a setup-action block when you have ALL required fields for that action.
+- Only output a create/connect/link action block AFTER the user explicitly confirms the summary.
 - If credentials fail validation, explain what went wrong and what the user should check.
 - After outputting a setup-action block, add a brief message like "Let me set that up for you..." so the user knows something is happening.`;
 }
@@ -381,6 +413,17 @@ async function executeActions(session: SetupSessionState, agentReply: string): P
   }
 
   const action = actionData.action as string;
+
+  // ── Check PM tool for existing projects ───────────────────────
+  if (action === "check_pm_tool") {
+    return await handleCheckPmTool(session, actionData);
+  }
+
+  // ── Link existing PM tool project to FACE ─────────────────────
+  if (action === "link_project") {
+    return await handleLinkProject(session, actionData);
+  }
+
   const name = (actionData.name as string) ?? "Untitled Project";
   const description = (actionData.description as string) ?? "";
   const goals = (actionData.goals as string) ?? "";
@@ -410,6 +453,25 @@ async function executeActions(session: SetupSessionState, agentReply: string): P
 
     session.scope = scope;
     session.credentials = credentials;
+
+    // Check if a provider with this scope is already connected
+    const existingProviders = listProviderConfigs();
+    const existingMatch = existingProviders.find(
+      (p) => p.type === pmTool && p.scope === scope,
+    );
+
+    if (existingMatch) {
+      // Provider already connected — link instead of creating duplicate
+      const project = createProject(name, repoLink);
+      setActiveProjectId(project.id);
+      session.createdProjectId = project.id;
+      session.connectedProviderName = existingMatch.name;
+      session.phase = "scaffolding";
+      saveSession(session);
+
+      const toolName = pmTool === "github" ? "GitHub" : pmTool === "linear" ? "Linear" : "Jira";
+      return `I found an existing ${toolName} connection for **${scope}** — I've linked your project to it instead of creating a duplicate.\n\nWould you like me to set up an initial project structure? This includes:\n- Default **labels** (bug, enhancement, priority levels, status labels)\n- Default **milestones** (MVP, v1.0)\n\nSay **"yes"** to auto-create this structure, or **"no"** to skip it.`;
+    }
 
     // Create the FACE project first
     const project = createProject(name, repoLink);
@@ -447,8 +509,119 @@ async function executeActions(session: SetupSessionState, agentReply: string): P
 }
 
 /**
+ * Check the connected PM tool for existing projects matching a search term.
+ * Returns a message describing what was found.
+ */
+async function handleCheckPmTool(
+  _session: SetupSessionState,
+  actionData: Record<string, unknown>,
+): Promise<string> {
+  const searchName = ((actionData.searchName as string) ?? "").toLowerCase();
+  const providers = listProviderConfigs();
+
+  if (providers.length === 0) {
+    return "No PM tool is currently connected. You can connect one (GitHub, Linear, or Jira) or create a local project.";
+  }
+
+  const results: string[] = [];
+
+  for (const provConfig of providers) {
+    try {
+      const provider = await getActiveProvider();
+      if (!provider) continue;
+
+      const projects = await provider.listProjects();
+      const matches = searchName
+        ? projects.filter((p) =>
+            p.name.toLowerCase().includes(searchName) ||
+            p.description.toLowerCase().includes(searchName),
+          )
+        : projects;
+
+      if (matches.length > 0) {
+        const toolName = provConfig.type === "github" ? "GitHub" : provConfig.type === "linear" ? "Linear" : "Jira";
+        results.push(
+          `**${toolName}** (${provConfig.scope}):\n` +
+            matches.map((p) => `  - "${p.name}" — ${p.description || "no description"} ([view](${p.url}))`).join("\n"),
+        );
+      }
+    } catch {
+      // Provider connection failed, skip
+    }
+  }
+
+  // Also check existing FACE projects
+  const faceProjects = listProjects();
+  const faceMatches = searchName
+    ? faceProjects.filter((p) => p.name.toLowerCase().includes(searchName))
+    : faceProjects;
+
+  if (faceMatches.length > 0) {
+    results.push(
+      `**FACE** (local):\n` +
+        faceMatches.map((p) => `  - "${p.name}" (created ${new Date(p.createdAt).toLocaleDateString()})`).join("\n"),
+    );
+  }
+
+  if (results.length === 0) {
+    return searchName
+      ? `No existing projects found matching "${searchName}" in connected PM tools or FACE.`
+      : "No existing projects found in connected PM tools or FACE.";
+  }
+
+  return `Found existing projects:\n\n${results.join("\n\n")}`;
+}
+
+/**
+ * Link an existing PM tool project to FACE without creating a duplicate provider.
+ */
+async function handleLinkProject(
+  session: SetupSessionState,
+  actionData: Record<string, unknown>,
+): Promise<string> {
+  const name = (actionData.name as string) ?? "Untitled Project";
+  const description = (actionData.description as string) ?? "";
+  const goals = (actionData.goals as string) ?? "";
+  const repoLink = (actionData.repoLink as string) ?? "";
+  const pmTool = (actionData.pmTool as string) ?? "local";
+  const existingProviderName = (actionData.existingProviderName as string) ?? "";
+
+  // Update session info
+  session.projectInfo.name = name;
+  if (description) session.projectInfo.description = description;
+  if (goals) session.projectInfo.goals = goals;
+  if (repoLink) session.projectInfo.repoLink = repoLink;
+  session.pmTool = pmTool as "github" | "linear" | "jira" | "local";
+
+  // Verify the provider exists
+  const providers = listProviderConfigs();
+  const matchedProvider = existingProviderName
+    ? providers.find((p) => p.name === existingProviderName)
+    : providers.find((p) => p.type === pmTool);
+
+  if (!matchedProvider) {
+    return `Could not find the existing provider connection "${existingProviderName}". Please provide credentials to connect.`;
+  }
+
+  // Create the FACE project linked to the existing provider
+  const project = createProject(name, repoLink);
+  setActiveProjectId(project.id);
+  session.createdProjectId = project.id;
+  session.connectedProviderName = matchedProvider.name;
+  session.scope = matchedProvider.scope;
+
+  // Ask about scaffolding
+  session.phase = "scaffolding";
+  saveSession(session);
+
+  const toolName = pmTool === "github" ? "GitHub" : pmTool === "linear" ? "Linear" : pmTool === "jira" ? "Jira" : "PM tool";
+  return `Your project **${name}** has been created and linked to the existing ${toolName} connection (${matchedProvider.scope}).\n\nWould you like me to set up an initial project structure? This includes:\n- Default **labels** (bug, enhancement, priority levels, status labels)\n- Default **milestones** (MVP, v1.0)\n\nSay **"yes"** to auto-create this structure, or **"no"** to skip it.`;
+}
+
+/**
  * Fallback response when the Claude Code agent is not available.
- * Uses simple heuristics to continue the conversation.
+ * Uses simple heuristics to continue the conversation with the
+ * confirmation-first flow.
  */
 function fallbackResponse(session: SetupSessionState): string {
   const lastUserMsg = [...session.messages].reverse().find((m) => m.role === "user")?.content ?? "";
@@ -500,6 +673,14 @@ function fallbackResponse(session: SetupSessionState): string {
       session.hasExistingProject = true;
       session.phase = "collecting";
       saveSession(session);
+
+      // Check if we already have PM tool connections
+      const providers = listProviderConfigs();
+      if (providers.length > 0) {
+        const providerList = providers.map((p) => `**${p.name}** (${p.type})`).join(", ");
+        return `I see you already have connected PM tools: ${providerList}.\n\nLet me check for existing projects there.\n\n\`\`\`setup-action\n{"action":"check_pm_tool"}\n\`\`\``;
+      }
+
       return "Which PM tool is your project in?\n\n- **GitHub Projects** — connect a GitHub repository\n- **Linear** — connect a Linear team\n- **Jira** — connect a Jira project\n\nJust tell me which one.";
     }
     if (wantsNew) {
@@ -531,12 +712,25 @@ function fallbackResponse(session: SetupSessionState): string {
     }
     if (!session.pmTool) {
       if (lc.includes("local") || lc.includes("face") || lc.includes("skip") || lc.includes("none")) {
+        // Present confirmation summary before creating
+        session.pmTool = "local";
+        session.phase = "confirming";
+        saveSession(session);
         const name = session.projectInfo.name ?? "Untitled Project";
-        return `Sounds good! Let me create your project now.\n\n\`\`\`setup-action\n{"action":"create_project","name":"${name}","description":"${session.projectInfo.description ?? ""}","pmTool":"local"}\n\`\`\`\n\nSetting that up for you...`;
+        const desc = session.projectInfo.description ? `\n- **Description**: ${session.projectInfo.description}` : "";
+        return `Here's what I have:\n\n- **Project name**: ${name}${desc}\n- **PM tool**: Local (FACE only)\n\nShall I go ahead and create this project?`;
       }
       if (lc.includes("github")) {
         session.pmTool = "github";
         saveSession(session);
+
+        // Check if a GitHub provider is already connected
+        const providers = listProviderConfigs();
+        const githubProvider = providers.find((p) => p.type === "github");
+        if (githubProvider) {
+          return `I see you already have a GitHub connection for **${githubProvider.scope}**. Would you like to link this project to that repository, or connect a different one?\n\nIf different, what's the repository in \`owner/repo\` format?`;
+        }
+
         return "GitHub it is! I'll need your **repository** in `owner/repo` format (or paste the full URL) and a **personal access token** with `repo` scope.\n\nWhat's your repository?";
       }
       if (lc.includes("linear")) {
@@ -555,6 +749,40 @@ function fallbackResponse(session: SetupSessionState): string {
     return "Let's continue setting up your project. Could you provide the information I asked about above?";
   }
 
+  // Confirming phase — present summary and wait for confirmation
+  if (session.phase === "confirming") {
+    const yes = lc.includes("yes") || lc.includes("sure") || lc.includes("go ahead") || lc.includes("confirm") || lc.includes("looks good") || lc.includes("correct");
+    const no = lc.includes("no") || lc.includes("change") || lc.includes("wrong") || lc.includes("update") || lc.includes("fix") || lc.includes("edit");
+
+    if (yes) {
+      const name = session.projectInfo.name ?? "Untitled Project";
+      const desc = session.projectInfo.description ?? "";
+      const pmTool = session.pmTool ?? "local";
+
+      if (pmTool === "local") {
+        return `Great, let me set that up!\n\n\`\`\`setup-action\n{"action":"create_project","name":"${name}","description":"${desc}","pmTool":"local"}\n\`\`\`\n\nSetting that up for you...`;
+      }
+
+      // For external tools with existing provider
+      const providers = listProviderConfigs();
+      const matchedProvider = providers.find((p) => p.type === pmTool);
+      if (matchedProvider) {
+        return `Great, let me set that up!\n\n\`\`\`setup-action\n{"action":"link_project","name":"${name}","description":"${desc}","pmTool":"${pmTool}","scope":"${matchedProvider.scope}","existingProviderName":"${matchedProvider.name}"}\n\`\`\`\n\nLinking your project now...`;
+      }
+
+      // Fallback: create local
+      return `Great, let me set that up!\n\n\`\`\`setup-action\n{"action":"create_project","name":"${name}","description":"${desc}","pmTool":"local"}\n\`\`\`\n\nSetting that up for you...`;
+    }
+
+    if (no) {
+      session.phase = "collecting";
+      saveSession(session);
+      return "No problem! What would you like to change? You can update the **name**, **description**, or **PM tool**.";
+    }
+
+    return "Would you like me to go ahead and create this project? Say **yes** to confirm, or tell me what you'd like to change.";
+  }
+
   // Scaffolding phase
   if (session.phase === "scaffolding") {
     const yes = lc.includes("yes") || lc.includes("sure") || lc.includes("go ahead");
@@ -568,7 +796,7 @@ function fallbackResponse(session: SetupSessionState): string {
     return "Would you like me to create default labels, milestones, and board structure? Say **yes** or **no**.";
   }
 
-  return "I'm having trouble processing your request right now. Could you try rephrasing, or tell me whether you'd like to **create a new project** or **connect an existing one**?";
+  return "I'm having trouble processing your request right now. Could you try rephrasing, or tell me what you'd like to do?";
 }
 
 // ── Scaffolding ────────────────────────────────────────────────────
