@@ -84,7 +84,10 @@ const PHASE_CONFIG: Record<Phase | "failed", { label: string; color: string; ico
 function getEffectivePhase(w: WorkflowState, taskStatuses: Record<string, TaskInfo>): Phase | "failed" {
   if (w.phase === "done" && w.taskId) {
     const task = taskStatuses[w.taskId];
-    if (!task || task.status === "failed" || task.status === "cancelled") {
+    // If task data hasn't loaded yet, trust the workflow phase rather than
+    // flashing "failed" during a loading race.
+    if (!task) return w.phase;
+    if (task.status === "failed" || task.status === "cancelled") {
       return "failed";
     }
   }
