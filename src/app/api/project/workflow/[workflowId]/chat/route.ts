@@ -345,7 +345,11 @@ export async function POST(
   if (body.action === "complete") {
     // Already done (e.g. auto-completed by PR merge poller) — return current state
     if (workflow.phase === "done") {
-      return NextResponse.json({ workflow });
+      return NextResponse.json({
+        workflow,
+        completionStatus: "already_done",
+        reason: "Workflow was already in done phase",
+      });
     }
     if (workflow.phase !== "implementing") {
       return NextResponse.json(
@@ -354,17 +358,32 @@ export async function POST(
       );
     }
 
-    // If this workflow has a linked issue (PR-based workflow), don't mark done —
-    // the PR merge poller will transition to "done" when the PR is merged.
-    if (workflow.issueId) {
-      return NextResponse.json({ workflow });
+    // If this workflow has a linked issue AND a PR, defer to the PR merge poller.
+    // The poller will transition to "done" when the PR is merged.
+    if (workflow.issueId && workflow.pr) {
+      return NextResponse.json({
+        workflow,
+        completionStatus: "deferred_to_poller",
+        reason: "PR exists — waiting for merge detection by poller",
+      });
     }
 
+    // Issue exists but no PR — the poller has nothing to poll, so complete directly.
+    // This covers: PR creation failed, agent worked on default branch, or PR
+    // was merged before metadata was saved.
     workflow.phase = "done";
     workflow.updatedAt = new Date().toISOString();
     saveWorkflow(workflow);
 
-    return NextResponse.json({ workflow });
+    const reason = workflow.issueId
+      ? "Issue linked but no PR attached — completed directly to avoid stuck state"
+      : "No linked issue — completed directly";
+
+    return NextResponse.json({
+      workflow,
+      completionStatus: "completed",
+      reason,
+    });
   }
 
   // ── Update assigned roles ──────────────────────────────────────
