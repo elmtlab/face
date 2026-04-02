@@ -11,7 +11,7 @@ interface SetupMessage {
   timestamp: string;
 }
 
-type SetupPhase = "greeting" | "collecting" | "connecting" | "scaffolding" | "complete" | "error";
+type SetupPhase = "greeting" | "collecting" | "connecting" | "confirming" | "scaffolding" | "complete" | "error";
 
 interface SetupSession {
   id: string;
@@ -40,6 +40,7 @@ const SETUP_PHASES: { key: SetupPhase; label: string }[] = [
   { key: "greeting", label: "Welcome" },
   { key: "collecting", label: "Project Info" },
   { key: "connecting", label: "Connect" },
+  { key: "confirming", label: "Confirm" },
   { key: "scaffolding", label: "Structure" },
   { key: "complete", label: "Done" },
 ];

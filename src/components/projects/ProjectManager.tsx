@@ -13,14 +13,13 @@ interface Project {
 }
 
 /**
- * Full project management UI: list, add, edit, remove projects.
- * Used as a widget or standalone view in role dashboards.
+ * Full project management UI: list, create (via conversational flow), edit, remove projects.
+ * Project creation uses a conversational AI agent flow instead of a manual form.
  */
 export function ProjectManager() {
   const { activeProjectId, setActive: setGlobalActive, refreshProjects } = useProjectContext();
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showForm, setShowForm] = useState(false);
   const [showSetupChat, setShowSetupChat] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [formName, setFormName] = useState("");
@@ -45,24 +44,15 @@ export function ProjectManager() {
     fetchProjects();
   }, [fetchProjects]);
 
-  const openAddForm = () => {
-    setEditingProject(null);
-    setFormName("");
-    setFormRepoLink("");
-    setShowForm(true);
-    setError(null);
-  };
-
   const openEditForm = (project: Project) => {
     setEditingProject(project);
     setFormName(project.name);
     setFormRepoLink(project.repoLink);
-    setShowForm(true);
     setError(null);
   };
 
   const handleSave = async () => {
-    if (!formName.trim()) {
+    if (!editingProject || !formName.trim()) {
       setError("Project name is required");
       return;
     }
@@ -70,22 +60,12 @@ export function ProjectManager() {
     setError(null);
 
     try {
-      if (editingProject) {
-        const res = await fetch(`/api/projects/${editingProject.id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: formName.trim(), repoLink: formRepoLink.trim() }),
-        });
-        if (!res.ok) throw new Error("Failed to update project");
-      } else {
-        const res = await fetch("/api/projects", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: formName.trim(), repoLink: formRepoLink.trim() }),
-        });
-        if (!res.ok) throw new Error("Failed to create project");
-      }
-      setShowForm(false);
+      const res = await fetch(`/api/projects/${editingProject.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: formName.trim(), repoLink: formRepoLink.trim() }),
+      });
+      if (!res.ok) throw new Error("Failed to update project");
       setEditingProject(null);
       await fetchProjects();
     } catch (e) {
@@ -157,32 +137,22 @@ export function ProjectManager() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-semibold text-zinc-200">Projects</h3>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setShowSetupChat(true)}
-            className="px-3 py-1.5 text-xs rounded-md bg-indigo-600 hover:bg-indigo-500 transition-colors"
-          >
-            + New Project
-          </button>
-          <button
-            onClick={openAddForm}
-            className="px-3 py-1.5 text-xs rounded-md border border-zinc-700 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors"
-          >
-            Quick Add
-          </button>
-        </div>
+        <button
+          onClick={() => setShowSetupChat(true)}
+          className="px-3 py-1.5 text-xs rounded-md bg-indigo-600 hover:bg-indigo-500 transition-colors"
+        >
+          + New Project
+        </button>
       </div>
 
       {error && (
         <p className="text-xs text-red-400 bg-red-600/10 px-3 py-1.5 rounded">{error}</p>
       )}
 
-      {/* Add/Edit form */}
-      {showForm && (
+      {/* Edit form (for existing projects only) */}
+      {editingProject && (
         <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4 space-y-3">
-          <h4 className="text-xs font-medium text-zinc-300">
-            {editingProject ? "Edit Project" : "New Project"}
-          </h4>
+          <h4 className="text-xs font-medium text-zinc-300">Edit Project</h4>
           <div>
             <label className="block text-[10px] text-zinc-500 mb-1">Project Name *</label>
             <input
@@ -209,10 +179,10 @@ export function ProjectManager() {
               disabled={saving}
               className="px-4 py-2 text-xs rounded-md bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 transition-colors"
             >
-              {saving ? "Saving..." : editingProject ? "Update" : "Create"}
+              {saving ? "Saving..." : "Update"}
             </button>
             <button
-              onClick={() => { setShowForm(false); setEditingProject(null); }}
+              onClick={() => setEditingProject(null)}
               className="px-4 py-2 text-xs rounded-md border border-zinc-700 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors"
             >
               Cancel

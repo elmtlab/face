@@ -21,6 +21,7 @@ export type SetupPhase =
   | "greeting"        // AI asks if user has existing project
   | "collecting"      // Gathering project info or credentials
   | "connecting"      // Validating connection to external tool
+  | "confirming"      // Agent presents summary, waits for user confirmation
   | "scaffolding"     // Optionally creating project structure
   | "complete"        // Setup finished
   | "error";          // Unrecoverable error
