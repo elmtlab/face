@@ -618,6 +618,182 @@ async function handleLinkProject(
   return `Your project **${name}** has been created and linked to the existing ${toolName} connection (${matchedProvider.scope}).\n\nWould you like me to set up an initial project structure? This includes:\n- Default **labels** (bug, enhancement, priority levels, status labels)\n- Default **milestones** (MVP, v1.0)\n\nSay **"yes"** to auto-create this structure, or **"no"** to skip it.`;
 }
 
+// ── Credential extraction helpers ─────────────────────────────────
+
+/** Extract recognizable credential fragments from user input. */
+function extractCredentials(input: string): {
+  repo?: string;
+  token?: string;
+  email?: string;
+  baseUrl?: string;
+  teamId?: string;
+  projectKey?: string;
+} {
+  const result: Record<string, string> = {};
+
+  // GitHub repo: owner/repo or full URL
+  const repoMatch = input.match(
+    /(?:github\.com\/)?([a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+)/,
+  );
+  if (repoMatch) {
+    result.repo = repoMatch[1].replace(/\.git$/, "");
+  }
+
+  // GitHub token
+  const ghTokenMatch = input.match(/(ghp_[a-zA-Z0-9]{36,}|github_pat_[a-zA-Z0-9_]{20,})/);
+  if (ghTokenMatch) result.token = ghTokenMatch[1];
+
+  // Linear API key
+  const linTokenMatch = input.match(/(lin_api_[a-zA-Z0-9]{20,})/);
+  if (linTokenMatch) result.token = linTokenMatch[1];
+
+  // Generic long token (fallback for Jira/Linear tokens without prefix)
+  if (!result.token) {
+    const genericToken = input.match(/\b([a-zA-Z0-9]{20,})\b/);
+    // Only treat as token if it doesn't look like a repo, URL, or email
+    if (genericToken && !genericToken[1].includes("/") && !genericToken[1].includes(".") && !genericToken[1].includes("@")) {
+      result.token = genericToken[1];
+    }
+  }
+
+  // Email
+  const emailMatch = input.match(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/);
+  if (emailMatch) result.email = emailMatch[1];
+
+  // Jira base URL (*.atlassian.net or custom URL)
+  const urlMatch = input.match(/(https?:\/\/[a-zA-Z0-9.-]+\.atlassian\.net)/i);
+  if (urlMatch) {
+    result.baseUrl = urlMatch[1];
+  } else {
+    // Accept plain domain like "team.atlassian.net"
+    const domainMatch = input.match(/([a-zA-Z0-9.-]+\.atlassian\.net)/i);
+    if (domainMatch) result.baseUrl = `https://${domainMatch[1]}`;
+  }
+
+  // Jira project key (2-10 uppercase letters, standalone)
+  const keyMatch = input.match(/\b([A-Z]{2,10})\b/);
+  if (keyMatch) result.projectKey = keyMatch[1];
+
+  return result;
+}
+
+/**
+ * Collect credentials for the selected PM tool.
+ * Parses user input for recognizable patterns, stores what it finds,
+ * asks for the next missing field, and transitions to confirming
+ * when all required fields are collected.
+ */
+function collectCredentials(session: SetupSessionState, userInput: string): string {
+  if (!session.credentials) session.credentials = {};
+  const extracted = extractCredentials(userInput);
+  const creds = session.credentials;
+
+  if (session.pmTool === "github") {
+    // Check for existing provider reuse
+    const providers = listProviderConfigs();
+    const githubProvider = providers.find((p) => p.type === "github");
+    if (githubProvider && (userInput.toLowerCase().includes("yes") || userInput.toLowerCase().includes("link") || userInput.toLowerCase().includes("same") || userInput.toLowerCase().includes("reuse"))) {
+      session.scope = githubProvider.scope;
+      session.phase = "confirming";
+      saveSession(session);
+      return buildConfirmationSummary(session);
+    }
+
+    if (extracted.repo) session.scope = extracted.repo;
+    if (extracted.token) creds.token = extracted.token;
+    saveSession(session);
+
+    if (!session.scope) {
+      return "What's your GitHub repository? Provide it in `owner/repo` format or paste the full URL.";
+    }
+    if (!creds.token) {
+      return `Got it — **${session.scope}**. Now I need your GitHub **personal access token** with \`repo\` scope.\n\nYou can create one at GitHub → Settings → Developer settings → Personal access tokens. Paste it here.`;
+    }
+
+    // All GitHub credentials collected
+    session.phase = "confirming";
+    saveSession(session);
+    return buildConfirmationSummary(session);
+  }
+
+  if (session.pmTool === "linear") {
+    // Team ID: accept as free text if no scope yet
+    if (!session.scope && !extracted.token) {
+      session.scope = userInput.trim();
+      saveSession(session);
+      return `Team ID set to **${session.scope}**. Now I need your **Linear API key** (starts with \`lin_api_\`).`;
+    }
+    if (extracted.token) creds.token = extracted.token;
+    if (!session.scope) {
+      // Token came first — still need team ID
+      saveSession(session);
+      return "Thanks for the API key. What's your **Linear team ID**?";
+    }
+    if (!creds.token) {
+      saveSession(session);
+      return "What's your **Linear API key**? It starts with `lin_api_`.";
+    }
+
+    session.phase = "confirming";
+    saveSession(session);
+    return buildConfirmationSummary(session);
+  }
+
+  if (session.pmTool === "jira") {
+    if (extracted.baseUrl) creds.baseUrl = extracted.baseUrl;
+    if (extracted.email) creds.email = extracted.email;
+    if (extracted.projectKey) session.scope = extracted.projectKey;
+    // For Jira, only store token if we already have the other fields
+    // to avoid misidentifying a project key or other input as a token
+    if (extracted.token && creds.baseUrl && (creds.email || session.scope)) {
+      creds.token = extracted.token;
+    }
+    saveSession(session);
+
+    if (!creds.baseUrl) {
+      return "What's your **Jira base URL**? (e.g. `https://team.atlassian.net`)";
+    }
+    if (!session.scope) {
+      return `Base URL set to **${creds.baseUrl}**. What's your **Jira project key**? (e.g. \`PROJ\`)`;
+    }
+    if (!creds.email) {
+      return `Project key set to **${session.scope}**. What's the **email** associated with your Jira account?`;
+    }
+    if (!creds.token) {
+      return `Almost there! Now I need your **Jira API token**.\n\nYou can create one at [id.atlassian.com/manage-profile/security/api-tokens](https://id.atlassian.com/manage-profile/security/api-tokens). Paste it here.`;
+    }
+
+    session.phase = "confirming";
+    saveSession(session);
+    return buildConfirmationSummary(session);
+  }
+
+  // Shouldn't reach here, but handle gracefully
+  return "Which PM tool would you like? **GitHub**, **Linear**, **Jira**, or **Local**?";
+}
+
+/** Build a confirmation summary for the confirming phase. */
+function buildConfirmationSummary(session: SetupSessionState): string {
+  const name = session.projectInfo.name ?? "Untitled Project";
+  const desc = session.projectInfo.description
+    ? `\n- **Description**: ${session.projectInfo.description}`
+    : "";
+
+  let toolInfo = "";
+  if (session.pmTool === "local") {
+    toolInfo = "\n- **PM tool**: Local (FACE only)";
+  } else if (session.pmTool === "github") {
+    toolInfo = `\n- **PM tool**: GitHub\n- **Repository**: ${session.scope ?? "not set"}`;
+  } else if (session.pmTool === "linear") {
+    toolInfo = `\n- **PM tool**: Linear\n- **Team ID**: ${session.scope ?? "not set"}`;
+  } else if (session.pmTool === "jira") {
+    const baseUrl = session.credentials?.baseUrl ?? "not set";
+    toolInfo = `\n- **PM tool**: Jira\n- **Base URL**: ${baseUrl}\n- **Project key**: ${session.scope ?? "not set"}\n- **Email**: ${session.credentials?.email ?? "not set"}`;
+  }
+
+  return `Here's what I have:\n\n- **Project name**: ${name}${desc}${toolInfo}\n- **Credentials**: stored securely\n\nShall I go ahead and set this up?`;
+}
+
 /**
  * Fallback response when the Claude Code agent is not available.
  * Uses simple heuristics to continue the conversation with the
@@ -745,8 +921,9 @@ function fallbackResponse(session: SetupSessionState): string {
       }
       return "Which tool would you like? **GitHub**, **Linear**, **Jira**, or **Local**?";
     }
-    // Collecting phase but all fields filled — provide a contextual nudge
-    return "Let's continue setting up your project. Could you provide the information I asked about above?";
+
+    // PM tool is selected — collect tool-specific credentials
+    return collectCredentials(session, lastUserMsg);
   }
 
   // Confirming phase — present summary and wait for confirmation
@@ -763,7 +940,14 @@ function fallbackResponse(session: SetupSessionState): string {
         return `Great, let me set that up!\n\n\`\`\`setup-action\n{"action":"create_project","name":"${name}","description":"${desc}","pmTool":"local"}\n\`\`\`\n\nSetting that up for you...`;
       }
 
-      // For external tools with existing provider
+      // For external tools — check if we collected fresh credentials
+      if (session.credentials && session.scope) {
+        const credsJson = JSON.stringify(session.credentials);
+        const repoLink = pmTool === "github" ? `https://github.com/${session.scope}` : "";
+        return `Great, let me set that up!\n\n\`\`\`setup-action\n{"action":"connect_provider","name":"${name}","description":"${desc}","pmTool":"${pmTool}","scope":"${session.scope}","repoLink":"${repoLink}","credentials":${credsJson}}\n\`\`\`\n\nConnecting your project now...`;
+      }
+
+      // Check for already-connected provider to link
       const providers = listProviderConfigs();
       const matchedProvider = providers.find((p) => p.type === pmTool);
       if (matchedProvider) {
