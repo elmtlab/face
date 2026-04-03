@@ -20,8 +20,8 @@ import { listProjects, getProject } from "@/lib/projects/store";
  * Body: { message: string }               — user sends a message
  *   or: { action: "ready_to_plan" }       — manually advance from gathering to planning
  *   or: { action: "generate_story" }      — ask AI to produce the story
- *   or: { action: "approve", role: "pm"|"eng" }
- *   or: { action: "reject", role: "pm"|"eng" }
+ *   or: { action: "confirm" }              — approve the story and advance to approved
+ *   or: { action: "request_changes" }      — send story back to planning for revision
  *   or: { action: "create_issue" }        — push story to GitHub
  *   or: { action: "implement" }           — trigger implementation
  */
@@ -193,33 +193,22 @@ export async function POST(
     return NextResponse.json({ workflow, issue });
   }
 
-  // ── Approval ──────────────────────────────────────────────────
-  if (body.action === "approve" || body.action === "reject") {
+  // ── Confirm / Request Changes ──────────────────────────────────
+  if (body.action === "confirm" || body.action === "request_changes") {
     if (workflow.phase !== "review") {
       return NextResponse.json(
-        { error: "Approvals are only available during the review phase" },
+        { error: "Confirm/request changes is only available during the review phase" },
         { status: 400 }
       );
     }
-    const role = body.role as "pm" | "eng";
-    const status = body.action === "approve" ? "approved" : "rejected";
 
-    if (role === "pm") workflow.pmApproval = status;
-    if (role === "eng") workflow.engApproval = status;
-
-    // If both approved, advance to approved phase
-    if (workflow.pmApproval === "approved" && workflow.engApproval === "approved") {
+    if (body.action === "confirm") {
       workflow.phase = "approved";
-    }
-
-    // If either rejected, go back to planning so the user can refine and re-generate
-    if (status === "rejected") {
-      // Capture the previous story before clearing it
+    } else {
+      // Go back to planning so the user can refine and re-generate
       const prevStory = workflow.generatedStory;
       workflow.phase = "planning";
       workflow.generatedStory = null;
-      workflow.pmApproval = "pending";
-      workflow.engApproval = "pending";
 
       let recap = "Changes requested. Here's what was in the previous story for reference:\n\n";
       if (prevStory) {
@@ -242,19 +231,14 @@ export async function POST(
     workflow.updatedAt = new Date().toISOString();
     saveWorkflow(workflow);
 
-    // Add approval comment to the issue
+    // Add comment to the issue
     if (workflow.issueId) {
       const provider = await getActiveProvider();
       if (provider) {
-        const action = status === "approved" ? "approved" : "requested changes on";
-        await provider.addComment(
-          workflow.issueId,
-          `**${role.toUpperCase()}** ${action} this story.${
-            workflow.pmApproval === "approved" && workflow.engApproval === "approved"
-              ? "\n\n Both PM and Engineering have approved. Ready for implementation."
-              : ""
-          }`
-        );
+        const comment = body.action === "confirm"
+          ? "Story confirmed. Ready for implementation."
+          : "Changes requested on this story.";
+        await provider.addComment(workflow.issueId, comment);
       }
     }
 

@@ -25,8 +25,6 @@ export interface GeneratedStory {
   estimatedEffort: string; // e.g. "small", "medium", "large"
 }
 
-export type ApprovalStatus = "pending" | "approved" | "rejected";
-
 export interface PullRequestInfo {
   number: number;
   url: string;
@@ -53,8 +51,6 @@ export interface WorkflowState {
   generatedStory: GeneratedStory | null;
   issueId: string | null;       // GitHub issue number once created
   issueUrl: string | null;
-  pmApproval: ApprovalStatus;
-  engApproval: ApprovalStatus;
   taskId: string | null;        // FACE task ID once implementation starts
   pr: PullRequestInfo | null;   // PR created after implementation
   /** Role slug of the user who created this requirement (e.g. "pm", "dev") */
@@ -92,6 +88,9 @@ export function loadWorkflow(id: string): WorkflowState | null {
     if (!("assignedRoles" in raw)) raw.assignedRoles = [];
     if (!("projectId" in raw)) raw.projectId = null;
     if (!("revisions" in raw)) raw.revisions = [];
+    // Remove deprecated dual-approval fields from old workflows
+    delete raw.pmApproval;
+    delete raw.engApproval;
     return raw;
   } catch {
     return null;
@@ -122,8 +121,6 @@ export function createWorkflow(options?: { creatorRole?: string; assignedRoles?:
     generatedStory: null,
     issueId: null,
     issueUrl: null,
-    pmApproval: "pending",
-    engApproval: "pending",
     taskId: null,
     pr: null,
     creatorRole: options?.creatorRole ?? null,

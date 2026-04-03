@@ -42,8 +42,6 @@ function buildWorkflow(overrides: Record<string, unknown> = {}) {
     generatedStory: null,
     issueId: "42",
     issueUrl: "https://github.com/test/repo/issues/42",
-    pmApproval: "approved",
-    engApproval: "approved",
     taskId: "task-1",
     pr: {
       number: 99,

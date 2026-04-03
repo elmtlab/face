@@ -9,8 +9,6 @@ interface WorkflowSummary {
   generatedStory: { title: string } | null;
   issueUrl: string | null;
   taskId: string | null;
-  pmApproval: string;
-  engApproval: string;
   createdAt: string;
   updatedAt: string;
 }
