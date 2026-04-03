@@ -92,6 +92,7 @@ export function ProjectSetupChat({ onClose, onProjectCreated }: Props) {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [streamingText, setStreamingText] = useState<string | null>(null);
+  const [thinkingTool, setThinkingTool] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -183,6 +184,7 @@ export function ProjectSetupChat({ onClose, onProjectCreated }: Props) {
     } catch (e) {
       setError((e as Error).message);
       setStreamingText(null);
+      setThinkingTool(null);
     } finally {
       setLoading(false);
     }
@@ -231,16 +233,23 @@ export function ProjectSetupChat({ onClose, onProjectCreated }: Props) {
               accumulated += parsed.text ?? "";
               const displayText = accumulated.replace(/```setup-action\n[\s\S]*?\n```/g, "").trim();
               setStreamingText(displayText);
+              setThinkingTool(null);
+            } else if (eventType === "thinking") {
+              // Agent is using a tool — show activity
+              setThinkingTool(parsed.tool ?? "working");
             } else if (eventType === "done") {
               // Final session state
               if (parsed.session) {
                 setSession(parsed.session);
               }
               setStreamingText(null);
+              setThinkingTool(null);
             } else if (eventType === "error") {
               setError(parsed.error ?? "Agent error");
               setStreamingText(null);
+              setThinkingTool(null);
             }
+            // heartbeat events are ignored — they just keep the connection alive
           } catch {
             // Invalid JSON in event data, skip
           }
@@ -319,7 +328,7 @@ export function ProjectSetupChat({ onClose, onProjectCreated }: Props) {
         ))}
 
         {/* Streaming response bubble */}
-        {streamingText !== null && (
+        {(streamingText !== null || thinkingTool) && (
           <div className="flex justify-start">
             <div className="max-w-[80%] rounded-lg px-4 py-2.5 text-sm bg-zinc-800 text-zinc-200 border border-zinc-700">
               <div className="flex items-center gap-2 mb-1">
@@ -334,7 +343,9 @@ export function ProjectSetupChat({ onClose, onProjectCreated }: Props) {
                   <div className="w-1.5 h-1.5 rounded-full bg-zinc-400 animate-bounce [animation-delay:0ms]" />
                   <div className="w-1.5 h-1.5 rounded-full bg-zinc-400 animate-bounce [animation-delay:150ms]" />
                   <div className="w-1.5 h-1.5 rounded-full bg-zinc-400 animate-bounce [animation-delay:300ms]" />
-                  <span className="text-xs text-zinc-500 ml-2">Thinking...</span>
+                  <span className="text-xs text-zinc-500 ml-2">
+                    {thinkingTool ? `Checking ${thinkingTool.replace(/_/g, " ")}...` : "Thinking..."}
+                  </span>
                 </div>
               )}
             </div>
