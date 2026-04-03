@@ -35,8 +35,6 @@ function buildWorkflow(overrides: Record<string, unknown> = {}) {
     issueUrl: null,
     taskId: "task-1",
     pr: null,
-    pmApproval: "approved",
-    engApproval: "approved",
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     ...overrides,

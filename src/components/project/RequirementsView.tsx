@@ -37,8 +37,6 @@ interface WorkflowState {
   generatedStory: GeneratedStory | null;
   issueId: string | null;
   issueUrl: string | null;
-  pmApproval: string;
-  engApproval: string;
   taskId: string | null;
   pr: PullRequestInfo | null;
   creatorRole: string | null;
@@ -357,8 +355,8 @@ export function RequirementsView({ onSelectWorkflow, onNewWorkflow, activeProjec
 
                           // Build sub-step detail
                           let detail = "";
-                          if (phase.key === "review" && (w.pmApproval !== "pending" || w.engApproval !== "pending")) {
-                            detail = `PM: ${w.pmApproval} · Eng: ${w.engApproval}`;
+                          if (phase.key === "review") {
+                            detail = "Awaiting confirmation";
                           }
                           if (phase.key === "implementing" && w.taskId) {
                             const taskInfo = taskStatuses[w.taskId];

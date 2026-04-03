@@ -22,8 +22,6 @@ interface GeneratedStory {
 }
 
 type Phase = "gathering" | "planning" | "review" | "approved" | "implementing" | "done";
-type ApprovalStatus = "pending" | "approved" | "rejected";
-
 interface PullRequestInfo {
   number: number;
   url: string;
@@ -49,8 +47,6 @@ interface WorkflowState {
   generatedStory: GeneratedStory | null;
   issueId: string | null;
   issueUrl: string | null;
-  pmApproval: ApprovalStatus;
-  engApproval: ApprovalStatus;
   taskId: string | null;
   pr: PullRequestInfo | null;
   creatorRole: string | null;
@@ -140,8 +136,6 @@ export function RequirementWorkflow({ workflowId, onClose, onCreated, activeProj
         generatedStory: null,
         issueId: null,
         issueUrl: null,
-        pmApproval: "pending",
-        engApproval: "pending",
         taskId: null,
         pr: null,
         creatorRole: null,
@@ -293,8 +287,8 @@ export function RequirementWorkflow({ workflowId, onClose, onCreated, activeProj
           <StoryReview
             story={workflow.generatedStory}
             workflow={workflow}
-            onApprove={(role) => doAction("approve", { role })}
-            onReject={(role) => doAction("reject", { role })}
+            onConfirm={() => doAction("confirm")}
+            onRequestChanges={() => doAction("request_changes")}
             onCreateIssue={() => doAction("create_issue")}
             onAssignedRolesChange={(roles) => {
               setWorkflow((w) => w ? { ...w, assignedRoles: roles } : null);
@@ -509,16 +503,16 @@ function ChatArea({
 function StoryReview({
   story,
   workflow,
-  onApprove,
-  onReject,
+  onConfirm,
+  onRequestChanges,
   onCreateIssue,
   onAssignedRolesChange,
   loading,
 }: {
   story: GeneratedStory;
   workflow: WorkflowState;
-  onApprove: (role: string) => void;
-  onReject: (role: string) => void;
+  onConfirm: () => void;
+  onRequestChanges: () => void;
   onCreateIssue: () => void;
   onAssignedRolesChange: (roles: string[]) => void;
   loading: boolean;
@@ -613,77 +607,23 @@ function StoryReview({
         </a>
       )}
 
-      {/* Approvals */}
-      <div className="grid grid-cols-2 gap-3">
-        <ApprovalCard
-          role="pm"
-          label="Project Manager"
-          status={workflow.pmApproval}
-          onApprove={() => onApprove("pm")}
-          onReject={() => onReject("pm")}
-          loading={loading}
-        />
-        <ApprovalCard
-          role="eng"
-          label="Engineer"
-          status={workflow.engApproval}
-          onApprove={() => onApprove("eng")}
-          onReject={() => onReject("eng")}
-          loading={loading}
-        />
-      </div>
-    </div>
-  );
-}
-
-function ApprovalCard({
-  label,
-  status,
-  onApprove,
-  onReject,
-  loading,
-}: {
-  role: string;
-  label: string;
-  status: ApprovalStatus;
-  onApprove: () => void;
-  onReject: () => void;
-  loading: boolean;
-}) {
-  return (
-    <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-3">
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-xs font-medium text-zinc-400">{label}</span>
-        <span
-          className={`text-[10px] px-1.5 py-0.5 rounded ${
-            status === "approved"
-              ? "bg-emerald-600/20 text-emerald-400"
-              : status === "rejected"
-                ? "bg-red-600/20 text-red-400"
-                : "bg-zinc-800 text-zinc-500"
-          }`}
+      {/* Confirm / Request Changes */}
+      <div className="flex gap-3">
+        <button
+          onClick={onConfirm}
+          disabled={loading}
+          className="flex-1 px-4 py-2.5 text-sm rounded-md bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 transition-colors font-medium"
         >
-          {status}
-        </span>
+          {loading ? "Confirming..." : "Confirm"}
+        </button>
+        <button
+          onClick={onRequestChanges}
+          disabled={loading}
+          className="flex-1 px-4 py-2.5 text-sm rounded-md bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 disabled:opacity-50 transition-colors font-medium"
+        >
+          {loading ? "Sending..." : "Request Changes"}
+        </button>
       </div>
-      {status === "pending" && (
-        <div className="flex gap-2">
-          <button
-            onClick={onApprove}
-            disabled={loading}
-            className="flex-1 px-2 py-1.5 text-xs rounded bg-emerald-600/20 text-emerald-400 hover:bg-emerald-600/30 disabled:opacity-50"
-          >
-            Approve
-          </button>
-          <button
-            onClick={onReject}
-            disabled={loading}
-            className="flex-1 px-2 py-1.5 text-xs rounded bg-red-600/10 text-red-400 hover:bg-red-600/20 disabled:opacity-50"
-          >
-            Request Changes
-          </button>
-        </div>
-      )}
     </div>
   );
 }
@@ -704,7 +644,7 @@ function ApprovedView({
       </div>
       <h3 className="text-lg font-semibold text-zinc-200">Story Approved</h3>
       <p className="text-sm text-zinc-400 text-center max-w-md">
-        Both PM and Engineering have approved this story.
+        This story has been confirmed and is ready for implementation.
         {workflow.issueUrl && (
           <>
             {" "}Issue:{" "}
