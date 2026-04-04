@@ -8,6 +8,7 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
+import { getMergedPrompt } from "./prompts/prompt-merger";
 
 // ── Types ──────────────────────────────────────────────────────────
 
@@ -135,6 +136,17 @@ export function createWorkflow(options?: { creatorRole?: string; assignedRoles?:
 }
 
 // ── AI prompt builders ─────────────────────────────────────────────
+
+/**
+ * Get the effective integration prompt for the given provider type.
+ * Merges base prompt with any accumulated runtime patches.
+ * Returns empty string if no prompt is available.
+ */
+export function getProviderPromptContext(providerType: string): string {
+  const merged = getMergedPrompt(providerType);
+  if (!merged) return "";
+  return `\n\n---\n${merged.content}\n---\n`;
+}
 
 export function buildGatheringSystemPrompt(projectContext?: { projectName?: string; repoLink?: string; allProjects?: { id: string; name: string; repoLink: string }[] }): string {
   let projectInfo = "";

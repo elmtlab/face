@@ -14,6 +14,8 @@ import type {
   IssuePriority,
   Column,
 } from "../types";
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+import { checkResponse } from "../prompts/anomaly-detector";
 
 // ── Helpers ────────────────────────────────────────────────────────
 
@@ -154,13 +156,13 @@ export class LinearProvider implements ProjectProvider {
   // ── Issues ─────────────────────────────────────────────────────
 
   async listIssues(filter?: IssueFilter): Promise<Issue[]> {
-    // TODO: Replace with real Linear API call
+    // TODO: Replace with real Linear API call — use checkResponse("linear", "issue", raw) on each item
     void filter;
     return [];
   }
 
   async getIssue(issueId: string): Promise<Issue | null> {
-    // TODO: Replace with real Linear API call
+    // TODO: Replace with real Linear API call — use checkResponse("linear", "issue", raw)
     void issueId;
     return null;
   }
