@@ -484,11 +484,18 @@ async function executeActions(session: SetupSessionState, agentReply: string): P
       credentials: { ...credentials },
     };
 
-    const result = await addProvider(providerConfig);
+    let result: { ok: boolean; error?: string };
+    try {
+      result = await addProvider(providerConfig);
+    } catch (err) {
+      session.credentials = null;
+      saveSession(session);
+      return mapProviderErrorToGuidance(pmTool, (err as Error).message);
+    }
     if (!result.ok) {
       session.credentials = null;
       saveSession(session);
-      return `Connection failed: ${result.error}\n\nPlease double-check your credentials and try again.`;
+      return mapProviderErrorToGuidance(pmTool, result.error ?? "Unknown connection error");
     }
 
     session.connectedProviderName = providerConfig.name;
@@ -603,6 +610,66 @@ async function handleLinkProject(
 
   const toolName = pmTool === "github" ? "GitHub" : pmTool === "linear" ? "Linear" : pmTool === "jira" ? "Jira" : "PM tool";
   return `Your project **${name}** has been created and linked to the existing ${toolName} connection (${matchedProvider.scope}).\n\nWould you like me to set up an initial project structure (default labels and milestones)?`;
+}
+
+// ── Provider error mapping ─────────────────────────────────────────
+
+/**
+ * Map raw provider errors to conversational guidance messages.
+ * Known validation errors get specific instructions; unknown errors
+ * get a generic but helpful message.
+ */
+function mapProviderErrorToGuidance(pmTool: string, rawError: string): string {
+  const toolName = pmTool === "github" ? "GitHub" : pmTool === "linear" ? "Linear" : pmTool === "jira" ? "Jira" : pmTool;
+
+  // Known validation errors → specific guidance
+  const knownErrors: { pattern: RegExp; guidance: string }[] = [
+    {
+      pattern: /scope must be "owner\/repo"/i,
+      guidance: `It looks like the GitHub repository format wasn't quite right. Could you provide it as **owner/repo** (e.g. \`acme/my-project\`)?`,
+    },
+    {
+      pattern: /API key is required/i,
+      guidance: `I still need a ${toolName} API key to connect. Could you provide your API key? You can find or create one in your ${toolName} account settings.`,
+    },
+    {
+      pattern: /team ID is required/i,
+      guidance: `I need a Linear team ID to connect. You can find this in your Linear workspace under Settings > Teams. Could you share it?`,
+    },
+    {
+      pattern: /baseUrl is required/i,
+      guidance: `I need your Jira instance URL to connect (e.g. \`https://yourteam.atlassian.net\`). Could you provide it?`,
+    },
+    {
+      pattern: /project key is required/i,
+      guidance: `I need the Jira project key to connect (e.g. \`PROJ\`). You can find this in your Jira project settings. What is it?`,
+    },
+    {
+      pattern: /email.*(required|missing)/i,
+      guidance: `I need the email address associated with your Jira account to authenticate. Could you provide it?`,
+    },
+    {
+      pattern: /token.*(required|missing)/i,
+      guidance: `I still need an API token to connect to ${toolName}. Could you provide one?`,
+    },
+    {
+      pattern: /(unauthorized|forbidden|401|403)/i,
+      guidance: `The credentials were rejected by ${toolName}. Could you double-check your API token and try again? Make sure it has the required permissions.`,
+    },
+    {
+      pattern: /(not found|404)/i,
+      guidance: `${toolName} couldn't find the project or resource. Could you verify the scope/ID you provided is correct?`,
+    },
+  ];
+
+  for (const { pattern, guidance } of knownErrors) {
+    if (pattern.test(rawError)) {
+      return guidance;
+    }
+  }
+
+  // Generic fallback — still conversational
+  return `I ran into an issue connecting to ${toolName}: ${rawError}\n\nCould you double-check the details and try again?`;
 }
 
 // ── Scaffolding ────────────────────────────────────────────────────
