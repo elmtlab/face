@@ -213,6 +213,7 @@ For Jira: credentials = {"baseUrl":"https://team.atlassian.net","email":"...","t
 
 function streamAgentResponse(session: SetupSessionState): Response {
   const encoder = new TextEncoder();
+  const abortController = new AbortController();
 
   const stream = new ReadableStream({
     async start(controller) {
@@ -225,7 +226,7 @@ function streamAgentResponse(session: SetupSessionState): Response {
       };
 
       try {
-        const agentReply = await callAgent(session, (chunk: string, toolName?: string) => {
+        const agentReply = await callAgent(session, abortController.signal, (chunk: string, toolName?: string) => {
           if (toolName) {
             send("thinking", { tool: toolName });
           } else if (chunk) {
@@ -258,10 +259,16 @@ function streamAgentResponse(session: SetupSessionState): Response {
 
         send("done", { session: sanitizeForClient(session) });
       } catch (err) {
-        send("error", { error: (err as Error).message || "Agent error" });
+        if (!abortController.signal.aborted) {
+          send("error", { error: (err as Error).message || "Agent error" });
+        }
       } finally {
         controller.close();
       }
+    },
+    cancel() {
+      // Client disconnected — abort the agent process
+      abortController.abort();
     },
   });
 
@@ -281,6 +288,7 @@ function streamAgentResponse(session: SetupSessionState): Response {
  */
 async function callAgent(
   session: SetupSessionState,
+  signal: AbortSignal,
   onChunk: (text: string, toolName?: string) => void,
 ): Promise<string> {
   const { spawn } = await import("child_process");
@@ -319,6 +327,35 @@ async function callAgent(
 
     let fullText = "";
     let lineBuf = "";
+    let settled = false;
+
+    const cleanup = () => {
+      clearInterval(heartbeat);
+      clearTimeout(timeout);
+      signal.removeEventListener("abort", onAbort);
+    };
+
+    /**
+     * Gracefully kill the child process: SIGTERM first,
+     * then SIGKILL after 3s if it hasn't exited.
+     */
+    const killChild = () => {
+      try { child.kill("SIGTERM"); } catch { /* ignore */ }
+      setTimeout(() => {
+        try { child.kill("SIGKILL"); } catch { /* ignore */ }
+      }, 3_000);
+    };
+
+    // Kill child process when client disconnects
+    const onAbort = () => {
+      killChild();
+      if (!settled) {
+        settled = true;
+        cleanup();
+        reject(new Error("Client disconnected"));
+      }
+    };
+    signal.addEventListener("abort", onAbort);
 
     // Send periodic heartbeats to keep the SSE connection alive
     const heartbeat = setInterval(() => {
@@ -373,7 +410,9 @@ async function callAgent(
     });
 
     child.on("close", (code) => {
-      clearInterval(heartbeat);
+      if (settled) return;
+      settled = true;
+      cleanup();
       if (fullText) {
         resolve(fullText);
       } else {
@@ -386,15 +425,18 @@ async function callAgent(
     });
 
     child.on("error", (err) => {
-      clearInterval(heartbeat);
+      if (settled) return;
+      settled = true;
+      cleanup();
       reject(new Error(`Agent process failed to start: ${err.message}`));
     });
 
     // Timeout after 3 minutes
-    setTimeout(() => {
-      clearInterval(heartbeat);
-      try { child.kill(); } catch { /* ignore */ }
-      if (!fullText) {
+    const timeout = setTimeout(() => {
+      killChild();
+      if (!settled) {
+        settled = true;
+        cleanup();
         reject(new Error("Agent timed out. Please try again."));
       }
     }, 180_000);
@@ -406,6 +448,10 @@ async function callAgent(
 /**
  * If the session already created a project, return it instead of
  * creating a duplicate. This guards against retries and double-submits.
+ *
+ * Edge case: if the session's project was deleted externally and another
+ * project now has the same name, adopt the existing project rather than
+ * throwing DuplicateProjectError.
  */
 function getOrCreateProject(
   session: SetupSessionState,
@@ -415,6 +461,20 @@ function getOrCreateProject(
   if (session.createdProjectId) {
     const existing = getProject(session.createdProjectId);
     if (existing) return existing;
+    // Referenced project was deleted — clear the stale reference and try to
+    // adopt an existing project with the same name rather than throwing
+    session.createdProjectId = null;
+    try {
+      return createProject(name, repoLink);
+    } catch (e) {
+      if (e instanceof DuplicateProjectError) {
+        const match = listProjects().find(
+          (p) => p.name.toLowerCase() === name.toLowerCase(),
+        );
+        if (match) return match;
+      }
+      throw e;
+    }
   }
   return createProject(name, repoLink);
 }

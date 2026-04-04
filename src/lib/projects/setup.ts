@@ -5,7 +5,7 @@
  * are resumable if the user navigates away.
  */
 
-import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync } from "fs";
+import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, unlinkSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
 
@@ -97,7 +97,73 @@ export function findActiveSession(): SetupSessionState | null {
   return sessions.find((s) => s.phase !== "complete" && s.phase !== "error") ?? null;
 }
 
+// ── Session cleanup ───────────────────────────────────────────────
+
+const SESSION_MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24 hours
+const SESSION_MAX_COUNT = 50;
+
+/**
+ * Garbage-collect stale setup sessions:
+ * 1. Remove any session older than 24h that is in a terminal state (complete/error)
+ * 2. If total count still exceeds SESSION_MAX_COUNT, remove the oldest sessions
+ */
+export function cleanupSessions(): void {
+  ensureDir();
+  const files: string[] = readdirSync(SESSION_DIR).filter((f) => f.endsWith(".json"));
+  const now = Date.now();
+
+  type SessionEntry = { file: string; session: SetupSessionState };
+  const entries: SessionEntry[] = [];
+
+  for (const file of files) {
+    try {
+      const raw = readFileSync(join(SESSION_DIR, file), "utf-8");
+      const session: SetupSessionState = JSON.parse(raw);
+      entries.push({ file, session });
+    } catch {
+      // Corrupted file — remove it
+      try { unlinkSync(join(SESSION_DIR, file)); } catch { /* ignore */ }
+    }
+  }
+
+  // Sort oldest first for pruning
+  entries.sort(
+    (a, b) => new Date(a.session.updatedAt).getTime() - new Date(b.session.updatedAt).getTime(),
+  );
+
+  // Pass 1: remove terminal sessions older than TTL
+  const remaining: SessionEntry[] = [];
+  for (const entry of entries) {
+    const age = now - new Date(entry.session.updatedAt).getTime();
+    const isTerminal = entry.session.phase === "complete" || entry.session.phase === "error";
+    if (isTerminal && age > SESSION_MAX_AGE_MS) {
+      try { unlinkSync(join(SESSION_DIR, entry.file)); } catch { /* ignore */ }
+    } else {
+      remaining.push(entry);
+    }
+  }
+
+  // Pass 2: enforce hard cap — remove oldest (terminal first, then any)
+  if (remaining.length > SESSION_MAX_COUNT) {
+    // Prefer removing terminal sessions first
+    const terminal = remaining.filter(
+      (e) => e.session.phase === "complete" || e.session.phase === "error",
+    );
+    const active = remaining.filter(
+      (e) => e.session.phase !== "complete" && e.session.phase !== "error",
+    );
+    const sorted = [...terminal, ...active]; // terminal first for removal
+    const toRemove = sorted.slice(0, remaining.length - SESSION_MAX_COUNT);
+    for (const entry of toRemove) {
+      try { unlinkSync(join(SESSION_DIR, entry.file)); } catch { /* ignore */ }
+    }
+  }
+}
+
 export function createSession(): SetupSessionState {
+  // Opportunistically clean up old sessions when creating a new one
+  try { cleanupSessions(); } catch { /* best-effort */ }
+
   const id = `setup-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
   const now = new Date().toISOString();
   const session: SetupSessionState = {

@@ -5,7 +5,7 @@
  * active project per-user. Each project has an id, name, and repo link.
  */
 
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
+import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
 
@@ -45,9 +45,20 @@ function readStore(): ProjectStore {
   }
 }
 
+/**
+ * Atomic write: write to a temp file in the same directory, then rename.
+ * This prevents partial/corrupt writes if the process crashes mid-write.
+ */
 function writeStore(store: ProjectStore) {
   ensureDir();
-  writeFileSync(STORE_PATH, JSON.stringify(store, null, 2));
+  const tmpPath = `${STORE_PATH}.${process.pid}.tmp`;
+  writeFileSync(tmpPath, JSON.stringify(store, null, 2));
+  try {
+    renameSync(tmpPath, STORE_PATH);
+  } catch {
+    // Fallback for environments where rename fails (e.g. cross-device)
+    writeFileSync(STORE_PATH, JSON.stringify(store, null, 2));
+  }
 }
 
 // ── Errors ─────────────────────────────────────────────────────────
