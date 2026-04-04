@@ -13,6 +13,13 @@ import {
 import { getActiveProvider } from "@/lib/project/manager";
 import { submitTask } from "@/lib/tasks/runner";
 import { listProjects, getProject } from "@/lib/projects/store";
+import {
+  runEvaluatorReview,
+  runDebateRound,
+  createConsensusState,
+  getConsensusSummary,
+  type AgentHarnessContext,
+} from "@/lib/project/agent-harness";
 
 /**
  * POST /api/project/workflow/:id/chat
@@ -20,10 +27,15 @@ import { listProjects, getProject } from "@/lib/projects/store";
  * Body: { message: string }               — user sends a message
  *   or: { action: "ready_to_plan" }       — manually advance from gathering to planning
  *   or: { action: "generate_story" }      — ask AI to produce the story
+ *   or: { action: "accept_evaluation" }    — accept evaluator assessment, advance to review
+ *   or: { action: "reject_evaluation" }    — reject evaluation, go back to planning
  *   or: { action: "confirm" }              — approve the story and advance to approved
  *   or: { action: "request_changes" }      — send story back to planning for revision
  *   or: { action: "create_issue" }        — push story to GitHub
- *   or: { action: "implement" }           — trigger implementation
+ *   or: { action: "start_debate" }        — start 3-agent consensus debate
+ *   or: { action: "run_debate_round" }    — run one round of the debate
+ *   or: { action: "skip_debate" }         — skip debate and go straight to implement
+ *   or: { action: "implement" }           — trigger implementation (requires consensus or skip)
  */
 export async function POST(
   req: Request,
@@ -140,10 +152,34 @@ export async function POST(
       const cleaned = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
       const story: GeneratedStory = JSON.parse(cleaned);
       workflow.generatedStory = story;
-      workflow.phase = "review";
+
+      // Send to Evaluator for review before human sees it
+      workflow.phase = "evaluating";
       workflow.updatedAt = new Date().toISOString();
       saveWorkflow(workflow);
-      return NextResponse.json({ workflow, story });
+
+      // Run evaluator review
+      const harnessCtx: AgentHarnessContext = {
+        storyTitle: story.title,
+        storyBody: story.body,
+        gatheringMessages: workflow.messages.map((m) => ({ role: m.role, content: m.content })),
+        callAI: (sp, msgs) => callAI(sp, msgs.map((m) => ({
+          role: m.role as "user" | "assistant",
+          content: m.content,
+          timestamp: new Date().toISOString(),
+        }))),
+      };
+      const evaluation = await runEvaluatorReview(harnessCtx);
+      workflow.evaluatorAssessment = evaluation.assessment;
+
+      // If evaluator approves, advance to human review; otherwise stay in evaluating
+      if (evaluation.approved) {
+        workflow.phase = "review";
+      }
+      workflow.updatedAt = new Date().toISOString();
+      saveWorkflow(workflow);
+
+      return NextResponse.json({ workflow, story, evaluation });
     } catch {
       return NextResponse.json(
         { error: "Failed to parse AI-generated story", raw },
@@ -191,6 +227,43 @@ export async function POST(
     workflow.updatedAt = new Date().toISOString();
     saveWorkflow(workflow);
     return NextResponse.json({ workflow, issue });
+  }
+
+  // ── Accept / reject evaluator assessment ───────────────────────
+  if (body.action === "accept_evaluation") {
+    if (workflow.phase !== "evaluating") {
+      return NextResponse.json(
+        { error: "Accept evaluation is only available during the evaluating phase" },
+        { status: 400 }
+      );
+    }
+    workflow.phase = "review";
+    workflow.updatedAt = new Date().toISOString();
+    saveWorkflow(workflow);
+    return NextResponse.json({ workflow });
+  }
+
+  if (body.action === "reject_evaluation") {
+    if (workflow.phase !== "evaluating") {
+      return NextResponse.json(
+        { error: "Reject evaluation is only available during the evaluating phase" },
+        { status: 400 }
+      );
+    }
+    // Go back to planning so the Planner can revise the story
+    workflow.phase = "planning";
+    workflow.generatedStory = null;
+    workflow.evaluatorAssessment = null;
+
+    workflow.messages.push({
+      role: "assistant",
+      content: `The Evaluator flagged issues with the story. Here's their assessment:\n\n${workflow.evaluatorAssessment ?? "(no assessment)"}\n\nPlease refine the requirements and I'll generate a revised story.`,
+      timestamp: new Date().toISOString(),
+    });
+
+    workflow.updatedAt = new Date().toISOString();
+    saveWorkflow(workflow);
+    return NextResponse.json({ workflow });
   }
 
   // ── Confirm / Request Changes ──────────────────────────────────
@@ -245,13 +318,116 @@ export async function POST(
     return NextResponse.json({ workflow });
   }
 
-  // ── Trigger implementation ────────────────────────────────────
-  if (body.action === "implement") {
+  // ── Start 3-agent consensus debate ──────────────────────────────
+  if (body.action === "start_debate") {
     if (workflow.phase !== "approved") {
       return NextResponse.json(
-        { error: "Workflow must be fully approved before implementation" },
+        { error: "Debate can only start after story approval" },
         { status: 400 }
       );
+    }
+    if (!workflow.generatedStory) {
+      return NextResponse.json({ error: "Missing story" }, { status: 400 });
+    }
+
+    workflow.consensus = createConsensusState(body.maxRounds ?? 10);
+    workflow.phase = "debating";
+    workflow.updatedAt = new Date().toISOString();
+    saveWorkflow(workflow);
+
+    // Run the first debate round immediately
+    const harnessCtx: AgentHarnessContext = {
+      storyTitle: workflow.generatedStory.title,
+      storyBody: workflow.generatedStory.body,
+      gatheringMessages: workflow.messages.map((m) => ({ role: m.role, content: m.content })),
+      callAI: (sp, msgs) => callAI(sp, msgs.map((m) => ({
+        role: m.role as "user" | "assistant",
+        content: m.content,
+        timestamp: new Date().toISOString(),
+      }))),
+    };
+    await runDebateRound(workflow.consensus, harnessCtx);
+    workflow.updatedAt = new Date().toISOString();
+    saveWorkflow(workflow);
+
+    return NextResponse.json({
+      workflow,
+      consensusSummary: getConsensusSummary(workflow.consensus),
+    });
+  }
+
+  // ── Run one debate round ──────────────────────────────────────
+  if (body.action === "run_debate_round") {
+    if (workflow.phase !== "debating") {
+      return NextResponse.json(
+        { error: "Debate rounds can only be run during the debating phase" },
+        { status: 400 }
+      );
+    }
+    if (!workflow.consensus || !workflow.generatedStory) {
+      return NextResponse.json({ error: "Missing consensus state or story" }, { status: 400 });
+    }
+
+    if (workflow.consensus.reached || workflow.consensus.escalated) {
+      return NextResponse.json({
+        workflow,
+        consensusSummary: getConsensusSummary(workflow.consensus),
+        done: true,
+      });
+    }
+
+    const harnessCtx: AgentHarnessContext = {
+      storyTitle: workflow.generatedStory.title,
+      storyBody: workflow.generatedStory.body,
+      gatheringMessages: workflow.messages.map((m) => ({ role: m.role, content: m.content })),
+      callAI: (sp, msgs) => callAI(sp, msgs.map((m) => ({
+        role: m.role as "user" | "assistant",
+        content: m.content,
+        timestamp: new Date().toISOString(),
+      }))),
+    };
+    await runDebateRound(workflow.consensus, harnessCtx);
+    workflow.updatedAt = new Date().toISOString();
+    saveWorkflow(workflow);
+
+    return NextResponse.json({
+      workflow,
+      consensusSummary: getConsensusSummary(workflow.consensus),
+      done: workflow.consensus.reached || workflow.consensus.escalated,
+    });
+  }
+
+  // ── Skip debate (go straight to implementation) ────────────────
+  if (body.action === "skip_debate") {
+    if (workflow.phase !== "approved" && workflow.phase !== "debating") {
+      return NextResponse.json(
+        { error: "Can only skip debate from approved or debating phase" },
+        { status: 400 }
+      );
+    }
+    // Clear any in-progress consensus and move to approved for implementation
+    workflow.phase = "approved";
+    workflow.updatedAt = new Date().toISOString();
+    saveWorkflow(workflow);
+    return NextResponse.json({ workflow });
+  }
+
+  // ── Trigger implementation ────────────────────────────────────
+  if (body.action === "implement") {
+    if (workflow.phase !== "approved" && workflow.phase !== "debating") {
+      return NextResponse.json(
+        { error: "Workflow must be approved or have reached consensus before implementation" },
+        { status: 400 }
+      );
+    }
+    // If in debating phase, check consensus
+    if (workflow.phase === "debating" && workflow.consensus) {
+      if (!workflow.consensus.reached && !workflow.consensus.escalated) {
+        return NextResponse.json(
+          { error: "Consensus has not been reached yet. Run more debate rounds or skip debate." },
+          { status: 400 }
+        );
+      }
     }
     if (!workflow.generatedStory) {
       return NextResponse.json({ error: "Missing story" }, { status: 400 });
