@@ -7,7 +7,7 @@ import {
   sanitizeForClient,
   type SetupSessionState,
 } from "@/lib/projects/setup";
-import { createProject, setActiveProjectId, listProjects } from "@/lib/projects/store";
+import { createProject, setActiveProjectId, listProjects, getProject, DuplicateProjectError, type Project } from "@/lib/projects/store";
 import { addProvider, getActiveProvider, listProviderConfigs } from "@/lib/project/manager";
 import { scaffoldProject, type ScaffoldResult } from "@/lib/projects/scaffold";
 import { readConfig } from "@/lib/tasks/file-manager";
@@ -88,6 +88,12 @@ export async function POST(req: Request) {
 
     return streamAgentResponse(session);
   } catch (e) {
+    if (e instanceof DuplicateProjectError) {
+      return NextResponse.json(
+        { error: e.message },
+        { status: 409 },
+      );
+    }
     return NextResponse.json(
       { error: (e as Error).message || "Internal error" },
       { status: 500 },
@@ -395,6 +401,24 @@ async function callAgent(
   });
 }
 
+// ── Idempotent project creation ─────────────────────────────────────
+
+/**
+ * If the session already created a project, return it instead of
+ * creating a duplicate. This guards against retries and double-submits.
+ */
+function getOrCreateProject(
+  session: SetupSessionState,
+  name: string,
+  repoLink: string,
+): Project {
+  if (session.createdProjectId) {
+    const existing = getProject(session.createdProjectId);
+    if (existing) return existing;
+  }
+  return createProject(name, repoLink);
+}
+
 // ── Action execution ─────────────────────────────────────────────────
 
 /**
@@ -438,7 +462,7 @@ async function executeActions(session: SetupSessionState, agentReply: string): P
   session.pmTool = pmTool as "github" | "linear" | "jira" | "local";
 
   if (action === "create_project") {
-    const project = createProject(name, repoLink);
+    const project = getOrCreateProject(session, name, repoLink);
     setActiveProjectId(project.id);
     session.createdProjectId = project.id;
     session.phase = "complete";
@@ -460,7 +484,7 @@ async function executeActions(session: SetupSessionState, agentReply: string): P
     );
 
     if (existingMatch) {
-      const project = createProject(name, repoLink);
+      const project = getOrCreateProject(session, name, repoLink);
       setActiveProjectId(project.id);
       session.createdProjectId = project.id;
       session.connectedProviderName = existingMatch.name;
@@ -472,7 +496,7 @@ async function executeActions(session: SetupSessionState, agentReply: string): P
     }
 
     // Create the FACE project first
-    const project = createProject(name, repoLink);
+    const project = getOrCreateProject(session, name, repoLink);
     setActiveProjectId(project.id);
     session.createdProjectId = project.id;
 
@@ -599,7 +623,7 @@ async function handleLinkProject(
     return `Could not find the existing provider connection "${existingProviderName}". Please provide credentials to connect.`;
   }
 
-  const project = createProject(name, repoLink);
+  const project = getOrCreateProject(session, name, repoLink);
   setActiveProjectId(project.id);
   session.createdProjectId = project.id;
   session.connectedProviderName = matchedProvider.name;
