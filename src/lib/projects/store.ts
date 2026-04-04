@@ -50,6 +50,15 @@ function writeStore(store: ProjectStore) {
   writeFileSync(STORE_PATH, JSON.stringify(store, null, 2));
 }
 
+// ── Errors ─────────────────────────────────────────────────────────
+
+export class DuplicateProjectError extends Error {
+  constructor(name: string) {
+    super(`A project named "${name}" already exists`);
+    this.name = "DuplicateProjectError";
+  }
+}
+
 // ── CRUD ───────────────────────────────────────────────────────────
 
 export function listProjects(): Project[] {
@@ -62,6 +71,14 @@ export function getProject(id: string): Project | null {
 
 export function createProject(name: string, repoLink: string): Project {
   const store = readStore();
+
+  const duplicate = store.projects.find(
+    (p) => p.name.toLowerCase() === name.toLowerCase(),
+  );
+  if (duplicate) {
+    throw new DuplicateProjectError(name);
+  }
+
   const now = new Date().toISOString();
   const project: Project = {
     id: `proj-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
