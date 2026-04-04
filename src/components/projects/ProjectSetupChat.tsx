@@ -96,7 +96,15 @@ export function ProjectSetupChat({ onClose, onProjectCreated }: Props) {
   const [error, setError] = useState<string | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
   const { refreshProjects } = useProjectContext();
+
+  // Abort any in-flight SSE stream on unmount (modal close / navigation)
+  useEffect(() => {
+    return () => {
+      abortRef.current?.abort();
+    };
+  }, []);
 
   // Start or resume session on mount
   useEffect(() => {
@@ -163,10 +171,16 @@ export function ProjectSetupChat({ onClose, onProjectCreated }: Props) {
     setSession((s) => s ? { ...s, messages: [...s.messages, userMsg] } : null);
 
     try {
+      // Create a new AbortController for this request so we can cancel
+      // the SSE stream if the user closes the modal mid-response
+      const ac = new AbortController();
+      abortRef.current = ac;
+
       const res = await fetch("/api/project/setup/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sessionId: session.id, message: messageText }),
+        signal: ac.signal,
       });
 
       const contentType = res.headers.get("content-type") ?? "";
@@ -182,10 +196,14 @@ export function ProjectSetupChat({ onClose, onProjectCreated }: Props) {
         setStreamingText(null);
       }
     } catch (e) {
-      setError((e as Error).message);
+      // Don't show error if request was intentionally aborted (modal close)
+      if ((e as Error).name !== "AbortError") {
+        setError((e as Error).message);
+      }
       setStreamingText(null);
       setThinkingTool(null);
     } finally {
+      abortRef.current = null;
       setLoading(false);
     }
   }, [session, input, loading]);

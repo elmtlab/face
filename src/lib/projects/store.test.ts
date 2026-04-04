@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 
 // Mock the filesystem so tests don't touch the real store
 let mockStoreData: string | null = null;
+let mockTmpStoreData: string | null = null;
 
 vi.mock("fs", async () => {
   const actual = await vi.importActual<typeof import("fs")>("fs");
@@ -20,7 +21,19 @@ vi.mock("fs", async () => {
         mockStoreData = data;
         return;
       }
+      if (typeof path === "string" && path.includes("projects.json") && path.endsWith(".tmp")) {
+        mockTmpStoreData = data;
+        return;
+      }
       return actual.writeFileSync(path, data);
+    },
+    renameSync: (src: string, dest: string) => {
+      if (typeof dest === "string" && dest.endsWith("projects.json") && mockTmpStoreData !== null) {
+        mockStoreData = mockTmpStoreData;
+        mockTmpStoreData = null;
+        return;
+      }
+      return actual.renameSync(src, dest);
     },
     mkdirSync: () => {},
   };
@@ -31,6 +44,7 @@ import { createProject, listProjects, DuplicateProjectError } from "./store";
 describe("createProject", () => {
   beforeEach(() => {
     mockStoreData = null;
+    mockTmpStoreData = null;
   });
 
   it("creates a project successfully", () => {
