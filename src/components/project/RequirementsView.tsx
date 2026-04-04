@@ -20,7 +20,7 @@ interface GeneratedStory {
   estimatedEffort: string;
 }
 
-type Phase = "gathering" | "planning" | "review" | "approved" | "implementing" | "done";
+type Phase = "gathering" | "planning" | "evaluating" | "review" | "approved" | "debating" | "implementing" | "done";
 
 interface PullRequestInfo {
   number: number;
@@ -62,8 +62,10 @@ interface TaskInfo {
 const PHASES: { key: Phase; label: string }[] = [
   { key: "gathering", label: "Gather Requirements" },
   { key: "planning", label: "Generate Story" },
+  { key: "evaluating", label: "Evaluate Story" },
   { key: "review", label: "Review & Approve" },
   { key: "approved", label: "Ready" },
+  { key: "debating", label: "Consensus Debate" },
   { key: "implementing", label: "Implementing" },
   { key: "done", label: "Done" },
 ];
@@ -72,8 +74,10 @@ const PHASES: { key: Phase; label: string }[] = [
 const PHASE_CONFIG: Record<Phase | "failed", { label: string; color: string; icon: string }> = {
   gathering: { label: "Gathering", color: "bg-blue-600/20 text-blue-400 border-blue-600/30", icon: "?" },
   planning: { label: "Planning", color: "bg-purple-600/20 text-purple-400 border-purple-600/30", icon: "~" },
+  evaluating: { label: "Evaluating", color: "bg-cyan-600/20 text-cyan-400 border-cyan-600/30", icon: "%" },
   review: { label: "Review", color: "bg-amber-600/20 text-amber-400 border-amber-600/30", icon: "!" },
   approved: { label: "Approved", color: "bg-emerald-600/20 text-emerald-400 border-emerald-600/30", icon: "+" },
+  debating: { label: "Debating", color: "bg-pink-600/20 text-pink-400 border-pink-600/30", icon: "&" },
   implementing: { label: "Implementing", color: "bg-orange-600/20 text-orange-400 border-orange-600/30", icon: "*" },
   done: { label: "Done", color: "bg-zinc-700/50 text-zinc-300 border-zinc-600/30", icon: "v" },
   failed: { label: "Failed", color: "bg-red-600/20 text-red-400 border-red-600/30", icon: "x" },
