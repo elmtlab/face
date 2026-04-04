@@ -86,7 +86,7 @@ export async function POST(req: Request) {
     });
     saveSession(session);
 
-    return streamAgentResponse(session, message.trim());
+    return streamAgentResponse(session);
   } catch (e) {
     return NextResponse.json(
       { error: (e as Error).message || "Internal error" },
@@ -106,117 +106,106 @@ function buildGreeting(): string {
   return "Welcome! I'll help you set up your project in FACE.\n\nTell me about your project — what's it called, what's it about? If you have a repository or PM tool (GitHub, Linear, Jira), I can connect it too.\n\nI'll gather the details, show you a summary, and set everything up once you confirm.";
 }
 
-// ── Agent-driven conversation ──────────────────────────────────────
+// ── Project configuration schema ────────────────────────────────────
+
+/**
+ * Build the configuration schema status — shows the AI what's been
+ * collected and what's still needed.
+ */
+function buildConfigStatus(session: SetupSessionState): string {
+  const fields: { label: string; value: string | null; required: boolean; options?: string }[] = [
+    { label: "Project name", value: session.projectInfo.name, required: true },
+    { label: "Description", value: session.projectInfo.description, required: false },
+    { label: "Goals", value: session.projectInfo.goals, required: false },
+    { label: "PM tool", value: session.pmTool, required: true, options: "github, linear, jira, local" },
+  ];
+
+  // Tool-specific fields
+  if (session.pmTool === "github") {
+    fields.push({ label: "Repository (owner/repo)", value: session.scope, required: true });
+    fields.push({ label: "GitHub personal access token", value: session.credentials?.token ? "(provided)" : null, required: true });
+  } else if (session.pmTool === "linear") {
+    fields.push({ label: "Team ID", value: session.scope, required: true });
+    fields.push({ label: "Linear API key", value: session.credentials?.token ? "(provided)" : null, required: true });
+  } else if (session.pmTool === "jira") {
+    fields.push({ label: "Jira base URL", value: session.credentials?.baseUrl ?? null, required: true });
+    fields.push({ label: "Project key", value: session.scope, required: true });
+    fields.push({ label: "Email", value: session.credentials?.email ?? null, required: true });
+    fields.push({ label: "Jira API token", value: session.credentials?.token ? "(provided)" : null, required: true });
+  }
+
+  const lines = fields.map((f) => {
+    const status = f.value ? `✓ ${f.value}` : (f.required ? "✗ (needed)" : "- (optional)");
+    const opts = f.options ? ` [options: ${f.options}]` : "";
+    return `  ${f.label}: ${status}${opts}`;
+  });
+
+  const allRequired = fields.filter((f) => f.required).every((f) => f.value);
+
+  return `CONFIGURATION STATUS:\n${lines.join("\n")}\n\nAll required fields filled: ${allRequired ? "YES — ready to confirm with user" : "NO — keep collecting"}`;
+}
+
+// ── System prompt ──────────────────────────────────────────────────
 
 function buildSystemPrompt(session: SetupSessionState): string {
   const existingProviders = listProviderConfigs();
-
-  // Build list of existing FACE projects for context
   const faceProjects = listProjects();
-  const faceProjectsList = faceProjects.length > 0
-    ? faceProjects.map((p) => `"${p.name}" (id: ${p.id})`).join(", ")
-    : "none";
+  const configStatus = buildConfigStatus(session);
 
-  return `You are a setup assistant for FACE, a project management tool. You're helping a user set up a new project through a conversational flow. Be friendly, concise, and helpful.
+  return `You are a setup assistant for FACE, a project management tool. Help the user configure a new project through natural conversation.
 
-## YOUR CAPABILITIES
-- You have direct access to the user's filesystem, git repos, and environment
-- You can validate whether directories, repos, and files actually exist
-- You can inspect git remotes, branches, and project structure
-- You can check the connected PM tool for existing projects
-- Use these capabilities proactively to help the user — don't just ask, verify!
+## CONFIGURATION TO COLLECT
 
-## CONTEXT
-- Already connected providers: ${existingProviders.length > 0 ? existingProviders.map((p) => `${p.name} (${p.type})`).join(", ") : "none"}
-- Existing FACE projects: ${faceProjectsList}
-- Current session phase: ${session.phase}
-- User chose existing project: ${session.hasExistingProject ?? "not decided yet"}
-- Chosen PM tool: ${session.pmTool ?? "not chosen yet"}
-- Project name: ${session.projectInfo.name ?? "not set"}
-- Project description: ${session.projectInfo.description ?? "not set"}
-- Project goals: ${session.projectInfo.goals ?? "not set"}
-- Provider scope: ${session.scope ?? "not set"}
-- Has credentials: ${session.credentials ? "yes (stored securely)" : "no"}
+${configStatus}
 
-## WHAT YOU NEED TO COLLECT
-Gather project configuration through natural conversation:
-1. **Project name**: A name for the project
-2. **Description** (optional): What the project is about
-3. **Goals** (optional): Main objectives
-4. **PM tool**: One of: github, linear, jira, or local (FACE-only, no external tool)
-5. **Credentials** (if external tool):
-   - GitHub: repository (owner/repo) + personal access token (starts with ghp_ or github_pat_)
-   - Linear: team ID + API key
-   - Jira: base URL (*.atlassian.net) + project key + email + API token
+## ENVIRONMENT
+- Connected providers: ${existingProviders.length > 0 ? existingProviders.map((p) => `${p.name} (${p.type}, scope: ${p.scope})`).join(", ") : "none"}
+- Existing FACE projects: ${faceProjects.length > 0 ? faceProjects.map((p) => `"${p.name}" (id: ${p.id})`).join(", ") : "none"}
 
-## CONVERSATIONAL FLOW
-Follow this flow naturally:
-1. **Ask questions** to understand what the user wants — project name, what it's about, which PM tool
-2. **Check for duplicates**: Before creating, ALWAYS check if the project already exists:
-   - If there's already a connected PM provider, use \`check_pm_tool\` to look for matching projects
-   - Check existing FACE projects listed above to avoid duplicates
-3. **If the project exists in the PM tool**: Offer to link it to FACE using \`link_project\` instead of creating a duplicate
-4. **Present a summary**: Before saving, show the user a summary of all gathered info and ask for explicit confirmation
-5. **Save only after confirmation**: Only output a create/connect/link action AFTER the user confirms the summary
+## YOUR JOB
+1. Through natural conversation, collect the required configuration fields listed above
+2. Ask ONE question at a time — don't overwhelm the user
+3. When all required fields are filled, present a summary and ask for confirmation
+4. Only output a setup-action block AFTER the user explicitly confirms
+5. If the user wants to change something, just update your understanding and re-confirm
+6. If you can infer information (e.g., project name from a repo URL), suggest it and confirm
+7. NEVER echo back tokens or secrets in your visible text
+8. Keep responses short — 1-4 sentences
 
-## VALIDATION GUIDELINES
-- If the user mentions a directory path, CHECK if it exists on the filesystem
-- If the user mentions a git repo, CHECK the git remotes to extract the GitHub owner/repo
-- If the user gives a vague project description, look at the directory structure and README to suggest a better one
-- If the user gives a repo URL, extract the owner/repo from it
-- If something looks like a typo or partial input, ask a clarifying question rather than failing silently
-- Suggest sensible defaults where possible (e.g., infer project name from repo name)
+## ACTIONS
+When you need to perform an action, include a fenced code block with language tag \`setup-action\` containing valid JSON.
 
-## HOW TO OUTPUT ACTIONS
-When you need to perform an action, include a fenced code block with the language tag \`setup-action\` in your response. The block must contain valid JSON.
-
-### To check PM tool for existing projects (use this BEFORE creating):
+### Check PM tool for existing projects (use BEFORE creating):
 \`\`\`setup-action
 {"action":"check_pm_tool","searchName":"optional search term"}
 \`\`\`
-The system will return a list of projects found in the connected PM tool. Use this to determine if the user's project already exists.
 
-### To link an existing PM tool project to FACE (when project already exists in PM tool):
+### Link existing PM tool project to FACE:
 \`\`\`setup-action
-{"action":"link_project","name":"Project Name","description":"optional description","goals":"optional goals","repoLink":"optional repo URL","pmTool":"github","scope":"owner/repo","existingProviderName":"name of existing provider connection"}
+{"action":"link_project","name":"Name","description":"desc","goals":"goals","repoLink":"url","pmTool":"github","scope":"owner/repo","existingProviderName":"provider name"}
 \`\`\`
 
-### To create a local project (no external PM tool):
+### Create a local project (no external PM tool):
 \`\`\`setup-action
-{"action":"create_project","name":"Project Name","description":"optional description","goals":"optional goals","repoLink":"optional repo URL","pmTool":"local"}
+{"action":"create_project","name":"Name","description":"desc","goals":"goals","repoLink":"url","pmTool":"local"}
 \`\`\`
 
-### To connect an external provider and create the project:
+### Connect an external provider and create the project:
 \`\`\`setup-action
-{"action":"connect_provider","name":"Project Name","description":"optional description","goals":"optional goals","repoLink":"https://github.com/owner/repo","pmTool":"github","scope":"owner/repo","credentials":{"token":"the-token-value"}}
+{"action":"connect_provider","name":"Name","description":"desc","goals":"goals","repoLink":"url","pmTool":"github","scope":"owner/repo","credentials":{"token":"..."}}
 \`\`\`
-
-For Linear:
-\`\`\`setup-action
-{"action":"connect_provider","name":"Project Name","pmTool":"linear","scope":"team-id","credentials":{"token":"lin_api_..."}}
-\`\`\`
-
-For Jira:
-\`\`\`setup-action
-{"action":"connect_provider","name":"Project Name","pmTool":"jira","scope":"PROJECT_KEY","credentials":{"baseUrl":"https://team.atlassian.net","email":"user@example.com","token":"..."}}
-\`\`\`
+For Linear: credentials = {"token":"lin_api_..."}
+For Jira: credentials = {"baseUrl":"https://team.atlassian.net","email":"...","token":"..."}
 
 ## RULES
-- Be conversational, not robotic. Adapt to what the user says.
-- The user can correct or adjust any information at any point — just update your understanding and re-confirm.
-- **ALWAYS present a summary and ask for confirmation before saving.** Example: "Here's what I have: [summary]. Shall I go ahead and set this up?"
-- If the user's input is vague or incomplete, ask a smart follow-up question. Don't fail silently.
-- If you can infer information (e.g., project name from a repo name), suggest it and confirm.
-- Ask ONE thing at a time when collecting credentials.
-- NEVER echo back tokens or secrets in your visible text.
-- When you discover something about the user's codebase (e.g., by reading git config), share what you found and suggest how to proceed.
-- Keep responses short — 1-4 sentences plus any necessary options.
-- Only output a create/connect/link action block AFTER the user explicitly confirms the summary.
-- If credentials fail validation, explain what went wrong and what the user should check.
-- After outputting a setup-action block, add a brief message like "Let me set that up for you..." so the user knows something is happening.`;
+- Be conversational, not robotic
+- If the user already has a connected provider matching their needs, suggest linking instead of creating a duplicate connection
+- After outputting a setup-action block, add a brief message like "Setting that up now..." so the user knows something is happening`;
 }
 
-function streamAgentResponse(session: SetupSessionState, userMessage: string): Response {
+// ── Agent-driven conversation ──────────────────────────────────────
+
+function streamAgentResponse(session: SetupSessionState): Response {
   const encoder = new TextEncoder();
 
   const stream = new ReadableStream({
@@ -230,16 +219,16 @@ function streamAgentResponse(session: SetupSessionState, userMessage: string): R
       };
 
       try {
-        let agentReply = await callAgent(session, userMessage, (chunk: string) => {
-          send("chunk", { text: chunk });
+        const agentReply = await callAgent(session, (chunk: string, toolName?: string) => {
+          if (toolName) {
+            send("thinking", { tool: toolName });
+          } else if (chunk) {
+            send("chunk", { text: chunk });
+          } else {
+            // Empty chunk = heartbeat keepalive
+            send("heartbeat", {});
+          }
         });
-
-        // If agent returned empty/whitespace, use fallback
-        if (!agentReply.trim()) {
-          console.warn("[setup/chat] Agent returned empty response, using fallback.");
-          agentReply = fallbackResponse(session);
-          send("chunk", { text: agentReply });
-        }
 
         // Parse the reply for setup-action blocks
         const actionResult = await executeActions(session, agentReply);
@@ -286,8 +275,7 @@ function streamAgentResponse(session: SetupSessionState, userMessage: string): R
  */
 async function callAgent(
   session: SetupSessionState,
-  _userMessage: string,
-  onChunk: (text: string) => void,
+  onChunk: (text: string, toolName?: string) => void,
 ): Promise<string> {
   const { spawn } = await import("child_process");
 
@@ -295,11 +283,9 @@ async function callAgent(
   const agentPath = config?.agents?.["claude-code"]?.path;
 
   if (!agentPath) {
-    console.warn(
-      "[setup/chat] No Claude Code agent path configured at config.agents.claude-code.path. " +
-        "Falling back to heuristic responses. Set the agent path in your config to enable AI-driven setup.",
+    throw new Error(
+      "Claude Code agent is not configured. Set the agent path in config to enable AI-driven setup.",
     );
-    return fallbackResponse(session);
   }
 
   const systemPrompt = buildSystemPrompt(session);
@@ -309,10 +295,10 @@ async function callAgent(
     .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`)
     .join("\n\n");
 
-  const fullPrompt = `${systemPrompt}\n\n## CONVERSATION SO FAR\n${conversationHistory}\n\nRespond to the user's latest message. Remember: validate against the real environment when possible, be helpful with imprecise input, and output a setup-action block only when you have all required information.`;
+  const fullPrompt = `${systemPrompt}\n\n## CONVERSATION SO FAR\n${conversationHistory}\n\nRespond to the user's latest message.`;
 
-  return new Promise((resolve) => {
-    const child = spawn(agentPath, ["-p", fullPrompt, "--output-format", "stream-json"], {
+  return new Promise((resolve, reject) => {
+    const child = spawn(agentPath, ["-p", fullPrompt, "--output-format", "stream-json", "--verbose"], {
       env: {
         PATH: process.env.PATH,
         HOME: process.env.HOME,
@@ -327,6 +313,11 @@ async function callAgent(
 
     let fullText = "";
     let lineBuf = "";
+
+    // Send periodic heartbeats to keep the SSE connection alive
+    const heartbeat = setInterval(() => {
+      onChunk("");
+    }, 15_000);
 
     child.stdout?.on("data", (data: Buffer) => {
       lineBuf += data.toString();
@@ -354,6 +345,10 @@ async function callAgent(
                       onChunk(newText);
                     }
                   }
+                } else if (block.type === "tool_use") {
+                  // Agent is using a tool — notify the client
+                  const toolName = (block.name as string) ?? "tool";
+                  onChunk("", toolName);
                 }
               }
             }
@@ -372,30 +367,35 @@ async function callAgent(
     });
 
     child.on("close", (code) => {
+      clearInterval(heartbeat);
       if (fullText) {
         resolve(fullText);
       } else {
-        if (code !== 0) {
-          console.error(
-            `[setup/chat] Agent process exited with code ${code} and produced no output.`,
-          );
-        }
-        resolve(fallbackResponse(session));
+        reject(new Error(
+          code !== 0
+            ? `Agent process exited with code ${code} and produced no output.`
+            : "Agent returned an empty response. Please try again.",
+        ));
       }
     });
 
     child.on("error", (err) => {
-      console.error("[setup/chat] Agent process failed to start:", err.message);
-      resolve(fallbackResponse(session));
+      clearInterval(heartbeat);
+      reject(new Error(`Agent process failed to start: ${err.message}`));
     });
 
-    // Timeout after 2 minutes
+    // Timeout after 3 minutes
     setTimeout(() => {
+      clearInterval(heartbeat);
       try { child.kill(); } catch { /* ignore */ }
-      if (!fullText) resolve(fallbackResponse(session));
-    }, 120_000);
+      if (!fullText) {
+        reject(new Error("Agent timed out. Please try again."));
+      }
+    }, 180_000);
   });
 }
+
+// ── Action execution ─────────────────────────────────────────────────
 
 /**
  * Parse agent response for setup-action blocks and execute them.
@@ -416,7 +416,7 @@ async function executeActions(session: SetupSessionState, agentReply: string): P
 
   // ── Check PM tool for existing projects ───────────────────────
   if (action === "check_pm_tool") {
-    return await handleCheckPmTool(session, actionData);
+    return await handleCheckPmTool(actionData);
   }
 
   // ── Link existing PM tool project to FACE ─────────────────────
@@ -438,13 +438,12 @@ async function executeActions(session: SetupSessionState, agentReply: string): P
   session.pmTool = pmTool as "github" | "linear" | "jira" | "local";
 
   if (action === "create_project") {
-    // Create a local FACE project
     const project = createProject(name, repoLink);
     setActiveProjectId(project.id);
     session.createdProjectId = project.id;
     session.phase = "complete";
     saveSession(session);
-    return `Your project **${name}** has been created and set as active! You're all set to start managing requirements and tasks in FACE.`;
+    return `Your project **${name}** has been created and set as active!`;
   }
 
   if (action === "connect_provider") {
@@ -461,7 +460,6 @@ async function executeActions(session: SetupSessionState, agentReply: string): P
     );
 
     if (existingMatch) {
-      // Provider already connected — link instead of creating duplicate
       const project = createProject(name, repoLink);
       setActiveProjectId(project.id);
       session.createdProjectId = project.id;
@@ -470,7 +468,7 @@ async function executeActions(session: SetupSessionState, agentReply: string): P
       saveSession(session);
 
       const toolName = pmTool === "github" ? "GitHub" : pmTool === "linear" ? "Linear" : "Jira";
-      return `I found an existing ${toolName} connection for **${scope}** — I've linked your project to it instead of creating a duplicate.\n\nWould you like me to set up an initial project structure? This includes:\n- Default **labels** (bug, enhancement, priority levels, status labels)\n- Default **milestones** (MVP, v1.0)\n\nSay **"yes"** to auto-create this structure, or **"no"** to skip it.`;
+      return `I found an existing ${toolName} connection for **${scope}** — I've linked your project to it.\n\nWould you like me to set up an initial project structure (default labels and milestones)?`;
     }
 
     // Create the FACE project first
@@ -488,21 +486,17 @@ async function executeActions(session: SetupSessionState, agentReply: string): P
 
     const result = await addProvider(providerConfig);
     if (!result.ok) {
-      // Connection failed — let user retry
-      session.phase = "collecting";
       session.credentials = null;
       saveSession(session);
       return `Connection failed: ${result.error}\n\nPlease double-check your credentials and try again.`;
     }
 
     session.connectedProviderName = providerConfig.name;
-
-    // Ask about scaffolding
     session.phase = "scaffolding";
     saveSession(session);
 
     const toolName = pmTool === "github" ? "GitHub" : pmTool === "linear" ? "Linear" : "Jira";
-    return `Connected to ${toolName} successfully!\n\nWould you like me to set up an initial project structure? This includes:\n- Default **labels** (bug, enhancement, priority levels, status labels)\n- Default **milestones** (MVP, v1.0)\n\nSay **"yes"** to auto-create this structure, or **"no"** to skip it.`;
+    return `Connected to ${toolName} successfully!\n\nWould you like me to set up an initial project structure (default labels and milestones)?`;
   }
 
   return null;
@@ -510,10 +504,8 @@ async function executeActions(session: SetupSessionState, agentReply: string): P
 
 /**
  * Check the connected PM tool for existing projects matching a search term.
- * Returns a message describing what was found.
  */
 async function handleCheckPmTool(
-  _session: SetupSessionState,
   actionData: Record<string, unknown>,
 ): Promise<string> {
   const searchName = ((actionData.searchName as string) ?? "").toLowerCase();
@@ -550,7 +542,6 @@ async function handleCheckPmTool(
     }
   }
 
-  // Also check existing FACE projects
   const faceProjects = listProjects();
   const faceMatches = searchName
     ? faceProjects.filter((p) => p.name.toLowerCase().includes(searchName))
@@ -586,14 +577,12 @@ async function handleLinkProject(
   const pmTool = (actionData.pmTool as string) ?? "local";
   const existingProviderName = (actionData.existingProviderName as string) ?? "";
 
-  // Update session info
   session.projectInfo.name = name;
   if (description) session.projectInfo.description = description;
   if (goals) session.projectInfo.goals = goals;
   if (repoLink) session.projectInfo.repoLink = repoLink;
   session.pmTool = pmTool as "github" | "linear" | "jira" | "local";
 
-  // Verify the provider exists
   const providers = listProviderConfigs();
   const matchedProvider = existingProviderName
     ? providers.find((p) => p.name === existingProviderName)
@@ -603,384 +592,17 @@ async function handleLinkProject(
     return `Could not find the existing provider connection "${existingProviderName}". Please provide credentials to connect.`;
   }
 
-  // Create the FACE project linked to the existing provider
   const project = createProject(name, repoLink);
   setActiveProjectId(project.id);
   session.createdProjectId = project.id;
   session.connectedProviderName = matchedProvider.name;
   session.scope = matchedProvider.scope;
 
-  // Ask about scaffolding
   session.phase = "scaffolding";
   saveSession(session);
 
   const toolName = pmTool === "github" ? "GitHub" : pmTool === "linear" ? "Linear" : pmTool === "jira" ? "Jira" : "PM tool";
-  return `Your project **${name}** has been created and linked to the existing ${toolName} connection (${matchedProvider.scope}).\n\nWould you like me to set up an initial project structure? This includes:\n- Default **labels** (bug, enhancement, priority levels, status labels)\n- Default **milestones** (MVP, v1.0)\n\nSay **"yes"** to auto-create this structure, or **"no"** to skip it.`;
-}
-
-// ── Credential extraction helpers ─────────────────────────────────
-
-/** Extract recognizable credential fragments from user input. */
-function extractCredentials(input: string): {
-  repo?: string;
-  token?: string;
-  email?: string;
-  baseUrl?: string;
-  teamId?: string;
-  projectKey?: string;
-} {
-  const result: Record<string, string> = {};
-
-  // GitHub repo: owner/repo or full URL
-  const repoMatch = input.match(
-    /(?:github\.com\/)?([a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+)/,
-  );
-  if (repoMatch) {
-    result.repo = repoMatch[1].replace(/\.git$/, "");
-  }
-
-  // GitHub token
-  const ghTokenMatch = input.match(/(ghp_[a-zA-Z0-9]{36,}|github_pat_[a-zA-Z0-9_]{20,})/);
-  if (ghTokenMatch) result.token = ghTokenMatch[1];
-
-  // Linear API key
-  const linTokenMatch = input.match(/(lin_api_[a-zA-Z0-9]{20,})/);
-  if (linTokenMatch) result.token = linTokenMatch[1];
-
-  // Generic long token (fallback for Jira/Linear tokens without prefix)
-  if (!result.token) {
-    const genericToken = input.match(/\b([a-zA-Z0-9]{20,})\b/);
-    // Only treat as token if it doesn't look like a repo, URL, or email
-    if (genericToken && !genericToken[1].includes("/") && !genericToken[1].includes(".") && !genericToken[1].includes("@")) {
-      result.token = genericToken[1];
-    }
-  }
-
-  // Email
-  const emailMatch = input.match(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/);
-  if (emailMatch) result.email = emailMatch[1];
-
-  // Jira base URL (*.atlassian.net or custom URL)
-  const urlMatch = input.match(/(https?:\/\/[a-zA-Z0-9.-]+\.atlassian\.net)/i);
-  if (urlMatch) {
-    result.baseUrl = urlMatch[1];
-  } else {
-    // Accept plain domain like "team.atlassian.net"
-    const domainMatch = input.match(/([a-zA-Z0-9.-]+\.atlassian\.net)/i);
-    if (domainMatch) result.baseUrl = `https://${domainMatch[1]}`;
-  }
-
-  // Jira project key (2-10 uppercase letters, standalone)
-  const keyMatch = input.match(/\b([A-Z]{2,10})\b/);
-  if (keyMatch) result.projectKey = keyMatch[1];
-
-  return result;
-}
-
-/**
- * Collect credentials for the selected PM tool.
- * Parses user input for recognizable patterns, stores what it finds,
- * asks for the next missing field, and transitions to confirming
- * when all required fields are collected.
- */
-function collectCredentials(session: SetupSessionState, userInput: string): string {
-  if (!session.credentials) session.credentials = {};
-  const extracted = extractCredentials(userInput);
-  const creds = session.credentials;
-
-  if (session.pmTool === "github") {
-    // Check for existing provider reuse
-    const providers = listProviderConfigs();
-    const githubProvider = providers.find((p) => p.type === "github");
-    if (githubProvider && (userInput.toLowerCase().includes("yes") || userInput.toLowerCase().includes("link") || userInput.toLowerCase().includes("same") || userInput.toLowerCase().includes("reuse"))) {
-      session.scope = githubProvider.scope;
-      session.phase = "confirming";
-      saveSession(session);
-      return buildConfirmationSummary(session);
-    }
-
-    if (extracted.repo) session.scope = extracted.repo;
-    if (extracted.token) creds.token = extracted.token;
-    saveSession(session);
-
-    if (!session.scope) {
-      return "What's your GitHub repository? Provide it in `owner/repo` format or paste the full URL.";
-    }
-    if (!creds.token) {
-      return `Got it — **${session.scope}**. Now I need your GitHub **personal access token** with \`repo\` scope.\n\nYou can create one at GitHub → Settings → Developer settings → Personal access tokens. Paste it here.`;
-    }
-
-    // All GitHub credentials collected
-    session.phase = "confirming";
-    saveSession(session);
-    return buildConfirmationSummary(session);
-  }
-
-  if (session.pmTool === "linear") {
-    // Team ID: accept as free text if no scope yet
-    if (!session.scope && !extracted.token) {
-      session.scope = userInput.trim();
-      saveSession(session);
-      return `Team ID set to **${session.scope}**. Now I need your **Linear API key** (starts with \`lin_api_\`).`;
-    }
-    if (extracted.token) creds.token = extracted.token;
-    if (!session.scope) {
-      // Token came first — still need team ID
-      saveSession(session);
-      return "Thanks for the API key. What's your **Linear team ID**?";
-    }
-    if (!creds.token) {
-      saveSession(session);
-      return "What's your **Linear API key**? It starts with `lin_api_`.";
-    }
-
-    session.phase = "confirming";
-    saveSession(session);
-    return buildConfirmationSummary(session);
-  }
-
-  if (session.pmTool === "jira") {
-    if (extracted.baseUrl) creds.baseUrl = extracted.baseUrl;
-    if (extracted.email) creds.email = extracted.email;
-    if (extracted.projectKey) session.scope = extracted.projectKey;
-    // For Jira, only store token if we already have the other fields
-    // to avoid misidentifying a project key or other input as a token
-    if (extracted.token && creds.baseUrl && (creds.email || session.scope)) {
-      creds.token = extracted.token;
-    }
-    saveSession(session);
-
-    if (!creds.baseUrl) {
-      return "What's your **Jira base URL**? (e.g. `https://team.atlassian.net`)";
-    }
-    if (!session.scope) {
-      return `Base URL set to **${creds.baseUrl}**. What's your **Jira project key**? (e.g. \`PROJ\`)`;
-    }
-    if (!creds.email) {
-      return `Project key set to **${session.scope}**. What's the **email** associated with your Jira account?`;
-    }
-    if (!creds.token) {
-      return `Almost there! Now I need your **Jira API token**.\n\nYou can create one at [id.atlassian.com/manage-profile/security/api-tokens](https://id.atlassian.com/manage-profile/security/api-tokens). Paste it here.`;
-    }
-
-    session.phase = "confirming";
-    saveSession(session);
-    return buildConfirmationSummary(session);
-  }
-
-  // Shouldn't reach here, but handle gracefully
-  return "Which PM tool would you like? **GitHub**, **Linear**, **Jira**, or **Local**?";
-}
-
-/** Build a confirmation summary for the confirming phase. */
-function buildConfirmationSummary(session: SetupSessionState): string {
-  const name = session.projectInfo.name ?? "Untitled Project";
-  const desc = session.projectInfo.description
-    ? `\n- **Description**: ${session.projectInfo.description}`
-    : "";
-
-  let toolInfo = "";
-  if (session.pmTool === "local") {
-    toolInfo = "\n- **PM tool**: Local (FACE only)";
-  } else if (session.pmTool === "github") {
-    toolInfo = `\n- **PM tool**: GitHub\n- **Repository**: ${session.scope ?? "not set"}`;
-  } else if (session.pmTool === "linear") {
-    toolInfo = `\n- **PM tool**: Linear\n- **Team ID**: ${session.scope ?? "not set"}`;
-  } else if (session.pmTool === "jira") {
-    const baseUrl = session.credentials?.baseUrl ?? "not set";
-    toolInfo = `\n- **PM tool**: Jira\n- **Base URL**: ${baseUrl}\n- **Project key**: ${session.scope ?? "not set"}\n- **Email**: ${session.credentials?.email ?? "not set"}`;
-  }
-
-  return `Here's what I have:\n\n- **Project name**: ${name}${desc}${toolInfo}\n- **Credentials**: stored securely\n\nShall I go ahead and set this up?`;
-}
-
-/**
- * Fallback response when the Claude Code agent is not available.
- * Uses simple heuristics to continue the conversation with the
- * confirmation-first flow.
- */
-function fallbackResponse(session: SetupSessionState): string {
-  const lastUserMsg = [...session.messages].reverse().find((m) => m.role === "user")?.content ?? "";
-  const lc = lastUserMsg.toLowerCase();
-
-  // Greeting phase — determine project type
-  if (session.phase === "greeting") {
-    const hasExisting =
-      lc.includes("existing") ||
-      lc.includes("connect") ||
-      lc.includes("have") ||
-      lc.includes("github") ||
-      lc.includes("linear") ||
-      lc.includes("jira") ||
-      lc.includes("import") ||
-      lc.includes("integrate") ||
-      lc.includes("link") ||
-      lc.includes("repo") ||
-      lc.includes("repository");
-    const wantsNew =
-      lc.includes("new") ||
-      lc.includes("scratch") ||
-      lc.includes("create") ||
-      lc.includes("local") ||
-      lc.includes("start") ||
-      lc.includes("set up") ||
-      lc.includes("setup") ||
-      lc.includes("build") ||
-      lc.includes("make") ||
-      lc.includes("begin") ||
-      lc.includes("init");
-    const describesProject =
-      lc.includes("project") ||
-      lc.includes("app") ||
-      lc.includes("application") ||
-      lc.includes("website") ||
-      lc.includes("site") ||
-      lc.includes("service") ||
-      lc.includes("api") ||
-      lc.includes("tool") ||
-      lc.includes("platform") ||
-      lc.includes("dashboard") ||
-      lc.includes("web") ||
-      lc.includes("mobile") ||
-      lc.includes("frontend") ||
-      lc.includes("backend");
-
-    if (hasExisting && !wantsNew) {
-      session.hasExistingProject = true;
-      session.phase = "collecting";
-      saveSession(session);
-
-      // Check if we already have PM tool connections
-      const providers = listProviderConfigs();
-      if (providers.length > 0) {
-        const providerList = providers.map((p) => `**${p.name}** (${p.type})`).join(", ");
-        return `I see you already have connected PM tools: ${providerList}.\n\nLet me check for existing projects there.\n\n\`\`\`setup-action\n{"action":"check_pm_tool"}\n\`\`\``;
-      }
-
-      return "Which PM tool is your project in?\n\n- **GitHub Projects** — connect a GitHub repository\n- **Linear** — connect a Linear team\n- **Jira** — connect a Jira project\n\nJust tell me which one.";
-    }
-    if (wantsNew) {
-      session.hasExistingProject = false;
-      session.phase = "collecting";
-      saveSession(session);
-      return "Let's create a new project! What would you like to **name** your project?";
-    }
-    if (describesProject) {
-      session.hasExistingProject = false;
-      session.phase = "collecting";
-      saveSession(session);
-      return "Sounds great! Let's get that set up. What would you like to **name** your project?";
-    }
-    return "I'd like to understand your situation better. Do you:\n\n1. **Have an existing project** in GitHub, Linear, or Jira to connect?\n2. **Want to create a new project** from scratch?\n\nJust describe what you'd like to do.";
-  }
-
-  // Collecting phase — gather info
-  if (session.phase === "collecting") {
-    if (!session.projectInfo.name) {
-      session.projectInfo.name = lastUserMsg.trim();
-      saveSession(session);
-      return `**${session.projectInfo.name}** — got it! Give me a brief description of what this project is about. (Or say "skip" to move on.)`;
-    }
-    if (!session.projectInfo.description) {
-      session.projectInfo.description = lc === "skip" ? "" : lastUserMsg.trim();
-      saveSession(session);
-      return "Which PM tool would you like to use?\n\n- **GitHub** — connect a GitHub repository\n- **Linear** — modern issue tracking\n- **Jira** — enterprise PM\n- **Local** — manage everything in FACE\n\nPick one, or say \"local\" to skip external integrations.";
-    }
-    if (!session.pmTool) {
-      if (lc.includes("local") || lc.includes("face") || lc.includes("skip") || lc.includes("none")) {
-        // Present confirmation summary before creating
-        session.pmTool = "local";
-        session.phase = "confirming";
-        saveSession(session);
-        const name = session.projectInfo.name ?? "Untitled Project";
-        const desc = session.projectInfo.description ? `\n- **Description**: ${session.projectInfo.description}` : "";
-        return `Here's what I have:\n\n- **Project name**: ${name}${desc}\n- **PM tool**: Local (FACE only)\n\nShall I go ahead and create this project?`;
-      }
-      if (lc.includes("github")) {
-        session.pmTool = "github";
-        saveSession(session);
-
-        // Check if a GitHub provider is already connected
-        const providers = listProviderConfigs();
-        const githubProvider = providers.find((p) => p.type === "github");
-        if (githubProvider) {
-          return `I see you already have a GitHub connection for **${githubProvider.scope}**. Would you like to link this project to that repository, or connect a different one?\n\nIf different, what's the repository in \`owner/repo\` format?`;
-        }
-
-        return "GitHub it is! I'll need your **repository** in `owner/repo` format (or paste the full URL) and a **personal access token** with `repo` scope.\n\nWhat's your repository?";
-      }
-      if (lc.includes("linear")) {
-        session.pmTool = "linear";
-        saveSession(session);
-        return "Linear it is! I'll need your **team ID** and a **Linear API key**.\n\nWhat's your team ID?";
-      }
-      if (lc.includes("jira")) {
-        session.pmTool = "jira";
-        saveSession(session);
-        return "Jira it is! I'll need your **Jira base URL** (e.g. `team.atlassian.net`), **project key**, **email**, and **API token**.\n\nWhat's your Jira base URL?";
-      }
-      return "Which tool would you like? **GitHub**, **Linear**, **Jira**, or **Local**?";
-    }
-
-    // PM tool is selected — collect tool-specific credentials
-    return collectCredentials(session, lastUserMsg);
-  }
-
-  // Confirming phase — present summary and wait for confirmation
-  if (session.phase === "confirming") {
-    const yes = lc.includes("yes") || lc.includes("sure") || lc.includes("go ahead") || lc.includes("confirm") || lc.includes("looks good") || lc.includes("correct");
-    const no = lc.includes("no") || lc.includes("change") || lc.includes("wrong") || lc.includes("update") || lc.includes("fix") || lc.includes("edit");
-
-    if (yes) {
-      const name = session.projectInfo.name ?? "Untitled Project";
-      const desc = session.projectInfo.description ?? "";
-      const pmTool = session.pmTool ?? "local";
-
-      if (pmTool === "local") {
-        return `Great, let me set that up!\n\n\`\`\`setup-action\n{"action":"create_project","name":"${name}","description":"${desc}","pmTool":"local"}\n\`\`\`\n\nSetting that up for you...`;
-      }
-
-      // For external tools — check if we collected fresh credentials
-      if (session.credentials && session.scope) {
-        const credsJson = JSON.stringify(session.credentials);
-        const repoLink = pmTool === "github" ? `https://github.com/${session.scope}` : "";
-        return `Great, let me set that up!\n\n\`\`\`setup-action\n{"action":"connect_provider","name":"${name}","description":"${desc}","pmTool":"${pmTool}","scope":"${session.scope}","repoLink":"${repoLink}","credentials":${credsJson}}\n\`\`\`\n\nConnecting your project now...`;
-      }
-
-      // Check for already-connected provider to link
-      const providers = listProviderConfigs();
-      const matchedProvider = providers.find((p) => p.type === pmTool);
-      if (matchedProvider) {
-        return `Great, let me set that up!\n\n\`\`\`setup-action\n{"action":"link_project","name":"${name}","description":"${desc}","pmTool":"${pmTool}","scope":"${matchedProvider.scope}","existingProviderName":"${matchedProvider.name}"}\n\`\`\`\n\nLinking your project now...`;
-      }
-
-      // Fallback: create local
-      return `Great, let me set that up!\n\n\`\`\`setup-action\n{"action":"create_project","name":"${name}","description":"${desc}","pmTool":"local"}\n\`\`\`\n\nSetting that up for you...`;
-    }
-
-    if (no) {
-      session.phase = "collecting";
-      saveSession(session);
-      return "No problem! What would you like to change? You can update the **name**, **description**, or **PM tool**.";
-    }
-
-    return "Would you like me to go ahead and create this project? Say **yes** to confirm, or tell me what you'd like to change.";
-  }
-
-  // Scaffolding phase
-  if (session.phase === "scaffolding") {
-    const yes = lc.includes("yes") || lc.includes("sure") || lc.includes("go ahead");
-    const no = lc.includes("no") || lc.includes("skip") || lc.includes("don't");
-    if (yes) return "I'll set up the project structure now...";
-    if (no) {
-      session.phase = "complete";
-      saveSession(session);
-      return `All done! Your project is connected and ready. Head to the Board or Issues tab to get started.`;
-    }
-    return "Would you like me to create default labels, milestones, and board structure? Say **yes** or **no**.";
-  }
-
-  return "I'm having trouble processing your request right now. Could you try rephrasing, or tell me what you'd like to do?";
+  return `Your project **${name}** has been created and linked to the existing ${toolName} connection (${matchedProvider.scope}).\n\nWould you like me to set up an initial project structure (default labels and milestones)?`;
 }
 
 // ── Scaffolding ────────────────────────────────────────────────────
@@ -1024,7 +646,7 @@ async function handleScaffold(session: SetupSessionState, doScaffold: boolean) {
   session.autoScaffold = false;
   session.phase = "complete";
 
-  const reply = `All done! **${projectName}** is connected and ready to use. No project structure was created.\n\nHead to the Board or Issues tab to start working.`;
+  const reply = `All done! **${projectName}** is connected and ready to use.\n\nHead to the Board or Issues tab to start working.`;
   session.messages.push({
     role: "assistant",
     content: reply,
