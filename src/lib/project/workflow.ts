@@ -9,8 +9,19 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
 import { getMergedPrompt } from "./prompts/prompt-merger";
+import type { ConsensusState, DebateMessage } from "./agent-harness";
 
-// ── Types ──────────────────────────────────────────────────────────
+// ── Types ───────────────���──────────────────────────────────────────
+
+export type WorkflowPhase =
+  | "gathering"
+  | "planning"
+  | "evaluating"    // Evaluator reviews generated story before human
+  | "review"
+  | "approved"
+  | "debating"      // 3-agent consensus debate during implementation planning
+  | "implementing"
+  | "done";
 
 export interface ChatMessage {
   role: "user" | "assistant";
@@ -47,7 +58,7 @@ export interface RequirementRevision {
 
 export interface WorkflowState {
   id: string;
-  phase: "gathering" | "planning" | "review" | "approved" | "implementing" | "done";
+  phase: WorkflowPhase;
   messages: ChatMessage[];
   generatedStory: GeneratedStory | null;
   issueId: string | null;       // GitHub issue number once created
@@ -62,9 +73,16 @@ export interface WorkflowState {
   projectId: string | null;
   /** History of requirement revisions (oldest first) */
   revisions: RequirementRevision[];
+  /** Evaluator assessment of the generated story (populated in evaluating phase) */
+  evaluatorAssessment: string | null;
+  /** Consensus state for the 3-agent debate (populated in debating phase) */
+  consensus: ConsensusState | null;
   createdAt: string;
   updatedAt: string;
 }
+
+// Re-export consensus types for convenience
+export type { ConsensusState, DebateMessage };
 
 // ── Persistence ────────────────────────────────────────────────────
 
@@ -89,6 +107,8 @@ export function loadWorkflow(id: string): WorkflowState | null {
     if (!("assignedRoles" in raw)) raw.assignedRoles = [];
     if (!("projectId" in raw)) raw.projectId = null;
     if (!("revisions" in raw)) raw.revisions = [];
+    if (!("evaluatorAssessment" in raw)) raw.evaluatorAssessment = null;
+    if (!("consensus" in raw)) raw.consensus = null;
     // Remove deprecated dual-approval fields from old workflows
     delete raw.pmApproval;
     delete raw.engApproval;
@@ -128,6 +148,8 @@ export function createWorkflow(options?: { creatorRole?: string; assignedRoles?:
     assignedRoles: options?.assignedRoles ?? [],
     projectId: options?.projectId ?? null,
     revisions: [],
+    evaluatorAssessment: null,
+    consensus: null,
     createdAt: now,
     updatedAt: now,
   };

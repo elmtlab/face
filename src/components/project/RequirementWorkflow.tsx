@@ -21,7 +21,26 @@ interface GeneratedStory {
   estimatedEffort: string;
 }
 
-type Phase = "gathering" | "planning" | "review" | "approved" | "implementing" | "done";
+type Phase = "gathering" | "planning" | "evaluating" | "review" | "approved" | "debating" | "implementing" | "done";
+
+interface DebateMessage {
+  role: "planner" | "evaluator" | "generator";
+  content: string;
+  timestamp: string;
+  isApproval: boolean;
+}
+
+interface ConsensusState {
+  messages: DebateMessage[];
+  approvals: Record<string, boolean>;
+  round: number;
+  maxRounds: number;
+  reached: boolean;
+  escalated: boolean;
+  startedAt: string;
+  completedAt: string | null;
+}
+
 interface PullRequestInfo {
   number: number;
   url: string;
@@ -53,6 +72,8 @@ interface WorkflowState {
   assignedRoles: string[];
   projectId: string | null;
   revisions: RequirementRevision[];
+  evaluatorAssessment: string | null;
+  consensus: ConsensusState | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -60,11 +81,13 @@ interface WorkflowState {
 // ── Phase indicator ────────────────────────────────────────────────
 
 const PHASES: { key: Phase; label: string }[] = [
-  { key: "gathering", label: "Gather Requirements" },
-  { key: "planning", label: "Generate Story" },
-  { key: "review", label: "Review & Approve" },
+  { key: "gathering", label: "Gather" },
+  { key: "planning", label: "Plan" },
+  { key: "evaluating", label: "Evaluate" },
+  { key: "review", label: "Review" },
   { key: "approved", label: "Ready" },
-  { key: "implementing", label: "Implementing" },
+  { key: "debating", label: "Consensus" },
+  { key: "implementing", label: "Implement" },
   { key: "done", label: "Done" },
 ];
 
@@ -142,6 +165,8 @@ export function RequirementWorkflow({ workflowId, onClose, onCreated, activeProj
         assignedRoles: [],
         projectId: activeProjectId ?? null,
         revisions: [],
+        evaluatorAssessment: null,
+        consensus: null,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       });
@@ -282,6 +307,16 @@ export function RequirementWorkflow({ workflowId, onClose, onCreated, activeProj
           />
         )}
 
+        {/* Evaluator assessment */}
+        {workflow.phase === "evaluating" && workflow.generatedStory && (
+          <EvaluatingView
+            workflow={workflow}
+            onAccept={() => doAction("accept_evaluation")}
+            onReject={() => doAction("reject_evaluation")}
+            loading={loading}
+          />
+        )}
+
         {/* Story review */}
         {workflow.phase === "review" && workflow.generatedStory && (
           <StoryReview
@@ -304,11 +339,23 @@ export function RequirementWorkflow({ workflowId, onClose, onCreated, activeProj
           />
         )}
 
-        {/* Approved — ready to implement */}
+        {/* Approved — ready to implement or debate */}
         {workflow.phase === "approved" && (
           <ApprovedView
             workflow={workflow}
+            onStartDebate={() => doAction("start_debate")}
             onImplement={() => doAction("implement")}
+            loading={loading}
+          />
+        )}
+
+        {/* 3-agent consensus debate */}
+        {workflow.phase === "debating" && (
+          <DebatingView
+            workflow={workflow}
+            onRunRound={() => doAction("run_debate_round")}
+            onImplement={() => doAction("implement")}
+            onSkip={() => doAction("skip_debate")}
             loading={loading}
           />
         )}
@@ -628,19 +675,90 @@ function StoryReview({
   );
 }
 
+function EvaluatingView({
+  workflow,
+  onAccept,
+  onReject,
+  loading,
+}: {
+  workflow: WorkflowState;
+  onAccept: () => void;
+  onReject: () => void;
+  loading: boolean;
+}) {
+  return (
+    <div className="p-4 space-y-4 max-w-2xl mx-auto">
+      {/* Story preview */}
+      {workflow.generatedStory && (
+        <div className="bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden">
+          <div className="px-4 py-3 border-b border-zinc-800">
+            <h3 className="text-sm font-semibold text-zinc-200">{workflow.generatedStory.title}</h3>
+          </div>
+          <div className="p-4 text-xs text-zinc-400 whitespace-pre-wrap leading-relaxed max-h-48 overflow-y-auto">
+            {workflow.generatedStory.body}
+          </div>
+        </div>
+      )}
+
+      {/* Evaluator assessment */}
+      <div className="bg-zinc-900 border border-amber-600/30 rounded-lg overflow-hidden">
+        <div className="px-4 py-3 border-b border-zinc-800 flex items-center gap-2">
+          <span className="w-6 h-6 rounded-full bg-amber-600/20 flex items-center justify-center text-[10px] font-bold text-amber-400">E</span>
+          <h3 className="text-sm font-semibold text-zinc-200">Evaluator Assessment</h3>
+        </div>
+        <div className="p-4">
+          {workflow.evaluatorAssessment ? (
+            <p className="text-sm text-zinc-300 whitespace-pre-wrap leading-relaxed">
+              {workflow.evaluatorAssessment.replace("[APPROVE]", "").trim()}
+            </p>
+          ) : (
+            <div className="flex items-center gap-1.5">
+              <div className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-bounce [animation-delay:0ms]" />
+              <div className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-bounce [animation-delay:150ms]" />
+              <div className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-bounce [animation-delay:300ms]" />
+              <span className="text-xs text-zinc-500 ml-2">Evaluator is reviewing...</span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {workflow.evaluatorAssessment && (
+        <div className="flex gap-3">
+          <button
+            onClick={onAccept}
+            disabled={loading}
+            className="flex-1 px-4 py-2.5 text-sm rounded-md bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 transition-colors font-medium"
+          >
+            {loading ? "Accepting..." : "Accept & Continue to Review"}
+          </button>
+          <button
+            onClick={onReject}
+            disabled={loading}
+            className="flex-1 px-4 py-2.5 text-sm rounded-md bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 disabled:opacity-50 transition-colors font-medium"
+          >
+            {loading ? "Rejecting..." : "Revise Story"}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ApprovedView({
   workflow,
+  onStartDebate,
   onImplement,
   loading,
 }: {
   workflow: WorkflowState;
+  onStartDebate: () => void;
   onImplement: () => void;
   loading: boolean;
 }) {
   return (
     <div className="p-6 flex flex-col items-center justify-center gap-4">
       <div className="w-16 h-16 rounded-full bg-emerald-600/20 flex items-center justify-center">
-        <span className="text-2xl">✓</span>
+        <span className="text-2xl">&#x2713;</span>
       </div>
       <h3 className="text-lg font-semibold text-zinc-200">Story Approved</h3>
       <p className="text-sm text-zinc-400 text-center max-w-md">
@@ -654,16 +772,180 @@ function ApprovedView({
           </>
         )}
       </p>
-      <button
-        onClick={onImplement}
-        disabled={loading}
-        className="px-6 py-2.5 text-sm rounded-md bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 transition-colors font-medium"
-      >
-        {loading ? "Triggering..." : "Start Implementation with AI Agent"}
-      </button>
-      <p className="text-[10px] text-zinc-600 text-center">
-        This will spawn an AI agent task — progress shown here in real time
+      <div className="flex gap-3">
+        <button
+          onClick={onStartDebate}
+          disabled={loading}
+          className="px-6 py-2.5 text-sm rounded-md bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 transition-colors font-medium"
+        >
+          {loading ? "Starting..." : "Start Agent Debate"}
+        </button>
+        <button
+          onClick={onImplement}
+          disabled={loading}
+          className="px-6 py-2.5 text-sm rounded-md bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 disabled:opacity-50 transition-colors font-medium"
+        >
+          {loading ? "Triggering..." : "Skip Debate & Implement"}
+        </button>
+      </div>
+      <p className="text-[10px] text-zinc-600 text-center max-w-sm">
+        Agent Debate: Three AI agents (Planner, Evaluator, Generator) discuss the implementation plan until consensus.
+        Or skip directly to implementation.
       </p>
+    </div>
+  );
+}
+
+function DebatingView({
+  workflow,
+  onRunRound,
+  onImplement,
+  onSkip,
+  loading,
+}: {
+  workflow: WorkflowState;
+  onRunRound: () => void;
+  onImplement: () => void;
+  onSkip: () => void;
+  loading: boolean;
+}) {
+  const consensus = workflow.consensus;
+  const chatEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [consensus?.messages.length]);
+
+  const roleColors: Record<string, { bg: string; border: string; label: string; badge: string }> = {
+    planner: { bg: "bg-blue-600/10", border: "border-blue-600/30", label: "text-blue-400", badge: "bg-blue-600/20" },
+    evaluator: { bg: "bg-amber-600/10", border: "border-amber-600/30", label: "text-amber-400", badge: "bg-amber-600/20" },
+    generator: { bg: "bg-emerald-600/10", border: "border-emerald-600/30", label: "text-emerald-400", badge: "bg-emerald-600/20" },
+  };
+
+  return (
+    <div className="flex flex-col h-full">
+      {/* Status bar */}
+      <div className="px-4 py-3 border-b border-zinc-800 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <h3 className="text-sm font-semibold text-zinc-200">Agent Consensus Debate</h3>
+          {consensus && (
+            <span className="text-[10px] px-2 py-0.5 rounded bg-zinc-800 text-zinc-400">
+              Round {consensus.round}/{consensus.maxRounds}
+            </span>
+          )}
+        </div>
+        {consensus && (
+          <div className="flex items-center gap-2">
+            {(["planner", "evaluator", "generator"] as const).map((role) => (
+              <span
+                key={role}
+                className={`text-[10px] px-2 py-0.5 rounded ${
+                  consensus.approvals[role]
+                    ? "bg-emerald-600/20 text-emerald-400 border border-emerald-600/30"
+                    : "bg-zinc-800 text-zinc-500 border border-zinc-700"
+                }`}
+              >
+                {role.charAt(0).toUpperCase() + role.slice(1)}{" "}
+                {consensus.approvals[role] ? "&#x2713;" : "..."}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Debate messages */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-3">
+        {consensus?.messages.map((msg, i) => {
+          const colors = roleColors[msg.role] ?? roleColors.planner;
+          return (
+            <div key={i} className={`rounded-lg px-4 py-3 ${colors.bg} border ${colors.border}`}>
+              <div className="flex items-center gap-2 mb-1.5">
+                <span className={`w-5 h-5 rounded-full ${colors.badge} flex items-center justify-center text-[9px] font-bold ${colors.label}`}>
+                  {msg.role.charAt(0).toUpperCase()}
+                </span>
+                <span className={`text-[10px] font-medium uppercase tracking-wider ${colors.label}`}>
+                  {msg.role}
+                </span>
+                {msg.isApproval && (
+                  <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-600/20 text-emerald-400 border border-emerald-600/30">
+                    APPROVED
+                  </span>
+                )}
+                <span className="text-[10px] text-zinc-600 ml-auto">
+                  {new Date(msg.timestamp).toLocaleTimeString()}
+                </span>
+              </div>
+              <p className="text-sm text-zinc-300 whitespace-pre-wrap leading-relaxed">
+                {msg.content.replace("[APPROVE]", "").trim()}
+              </p>
+            </div>
+          );
+        })}
+
+        {loading && (
+          <div className="rounded-lg px-4 py-3 bg-zinc-800/50 border border-zinc-700">
+            <div className="flex items-center gap-1.5">
+              <div className="w-1.5 h-1.5 rounded-full bg-zinc-400 animate-bounce [animation-delay:0ms]" />
+              <div className="w-1.5 h-1.5 rounded-full bg-zinc-400 animate-bounce [animation-delay:150ms]" />
+              <div className="w-1.5 h-1.5 rounded-full bg-zinc-400 animate-bounce [animation-delay:300ms]" />
+              <span className="text-xs text-zinc-500 ml-2">Agents are discussing...</span>
+            </div>
+          </div>
+        )}
+
+        <div ref={chatEndRef} />
+      </div>
+
+      {/* Actions */}
+      <div className="border-t border-zinc-800 p-3 space-y-2">
+        {consensus?.reached && (
+          <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-emerald-600/10 border border-emerald-600/20 mb-2">
+            <span className="text-emerald-400 text-sm">&#x2713;</span>
+            <span className="text-xs text-emerald-300">
+              All three agents have reached consensus. Ready to implement.
+            </span>
+          </div>
+        )}
+
+        {consensus?.escalated && (
+          <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-amber-600/10 border border-amber-600/20 mb-2">
+            <span className="text-amber-400 text-sm">!</span>
+            <span className="text-xs text-amber-300">
+              Debate reached max rounds without consensus. Review the conversation and decide whether to proceed.
+            </span>
+          </div>
+        )}
+
+        <div className="flex gap-3">
+          {!consensus?.reached && !consensus?.escalated && (
+            <button
+              onClick={onRunRound}
+              disabled={loading}
+              className="flex-1 px-4 py-2.5 text-sm rounded-md bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 transition-colors font-medium"
+            >
+              {loading ? "Running round..." : "Run Next Round"}
+            </button>
+          )}
+
+          {(consensus?.reached || consensus?.escalated) && (
+            <button
+              onClick={onImplement}
+              disabled={loading}
+              className="flex-1 px-4 py-2.5 text-sm rounded-md bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 transition-colors font-medium"
+            >
+              {loading ? "Starting..." : "Start Implementation"}
+            </button>
+          )}
+
+          <button
+            onClick={onSkip}
+            disabled={loading}
+            className="px-4 py-2.5 text-sm rounded-md bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 disabled:opacity-50 transition-colors"
+          >
+            Skip
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
