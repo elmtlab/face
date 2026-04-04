@@ -6,6 +6,7 @@ import { createProvider, registerProvider } from "./registry";
 import { GitHubProvider } from "./providers/github";
 import { LinearProvider } from "./providers/linear";
 import { JiraProvider } from "./providers/jira";
+import { getMergedPrompt } from "./prompts/prompt-merger";
 
 // Register built-in providers
 registerProvider("github", () => new GitHubProvider());
@@ -52,6 +53,13 @@ export async function getActiveProvider(): Promise<ProjectProvider | null> {
   const provider = createProvider(provConfig);
   await provider.connect(provConfig);
   connectedProviders.set(activeName, provider);
+
+  // Log the effective prompt state for this provider
+  const merged = getMergedPrompt(provConfig.type);
+  if (merged) {
+    console.error(`[face] provider ${provConfig.type}: prompt v${merged.baseVersion} with ${merged.patchCount} patch(es)`);
+  }
+
   return provider;
 }
 

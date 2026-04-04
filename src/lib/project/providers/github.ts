@@ -14,6 +14,7 @@ import type {
   IssuePriority,
   Column,
 } from "../types";
+import { checkResponse } from "../prompts/anomaly-detector";
 
 // ── Helpers ────────────────────────────────────────────────────────
 
@@ -192,6 +193,9 @@ export class GitHubProvider implements ProjectProvider {
 
     const raw = await this.api(`/repos/${this.owner}/${this.repo}/issues?${params}`);
 
+    // Check the first raw item for schema anomalies (avoids per-item overhead)
+    if (raw.length > 0) checkResponse("github", "issue", raw[0]);
+
     // Find which open issues have linked PRs via search API (single request)
     const issuesWithPR = await this.getIssuesWithLinkedPRs();
 
@@ -219,6 +223,7 @@ export class GitHubProvider implements ProjectProvider {
   async getIssue(issueId: string): Promise<Issue | null> {
     try {
       const raw = await this.api(`/repos/${this.owner}/${this.repo}/issues/${issueId}`);
+      checkResponse("github", "issue", raw);
       const issue = mapIssue(raw);
       // Fetch comments
       const rawComments = await this.api(`/repos/${this.owner}/${this.repo}/issues/${issueId}/comments`);
@@ -248,6 +253,7 @@ export class GitHubProvider implements ProjectProvider {
         milestone: input.milestone ? Number(input.milestone) : undefined,
       }),
     });
+    checkResponse("github", "issue", raw);
     return mapIssue(raw);
   }
 
@@ -266,6 +272,7 @@ export class GitHubProvider implements ProjectProvider {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
+    checkResponse("github", "issue", raw);
     return mapIssue(raw);
   }
 

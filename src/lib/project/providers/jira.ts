@@ -14,6 +14,7 @@ import type {
   IssuePriority,
   Column,
 } from "../types";
+import { checkResponse } from "../prompts/anomaly-detector";
 
 // ── Helpers ────────────────────────────────────────────────────────
 
@@ -194,6 +195,8 @@ export class JiraProvider implements ProjectProvider {
 
     const data = await this.api(`/rest/api/3/search?${params}`);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    for (const raw of (data.issues ?? []).slice(0, 1)) checkResponse("jira", "issue", raw);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let issues: Issue[] = (data.issues ?? []).map((raw: any) => mapIssue(raw));
 
     if (filter?.status?.length) {
@@ -209,6 +212,7 @@ export class JiraProvider implements ProjectProvider {
     try {
       // TODO: Replace with real Jira API call
       const raw = await this.api(`/rest/api/3/issue/${issueId}?fields=summary,description,status,priority,labels,assignee,creator,created,updated,fixVersions,comment`);
+      checkResponse("jira", "issue", raw);
       const issue = mapIssue(raw);
       // Map comments
       const commentData = raw.fields?.comment?.comments ?? [];
