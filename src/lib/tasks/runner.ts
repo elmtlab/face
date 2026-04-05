@@ -8,7 +8,6 @@ import { createPRForCompletedTask } from "../project/pr-creator";
 export { describeToolUse } from "./describe-tool";
 import { describeToolUse } from "./describe-tool";
 import {
-  createWorktree,
   removeWorktree,
   cleanupOrphanedWorktrees,
 } from "../git/worktree";
@@ -100,7 +99,9 @@ export async function submitTask(
   agentId: string,
   prompt: string,
   options?: {
+    taskId?: string;
     workingDirectory?: string;
+    worktreePath?: string;
     title?: string;
     linkedIssue?: number;
     creatorRole?: string;
@@ -122,25 +123,8 @@ export async function submitTask(
     return { taskId: "", error: `Agent "${agentId}" path not found.` };
   }
 
-  const taskId = generateTaskId();
+  const taskId = options?.taskId ?? generateTaskId();
   const now = new Date().toISOString();
-
-  // Resolve the base repo directory for this task
-  const repoRoot = options?.workingDirectory ?? process.cwd();
-
-  // Create an isolated git worktree so concurrent tasks don't conflict
-  let worktreePath: string | undefined;
-  let workingDirectory: string;
-  try {
-    worktreePath = createWorktree(repoRoot, taskId);
-    workingDirectory = worktreePath;
-  } catch (err) {
-    console.error(
-      `[face] Failed to create worktree for task ${taskId}, falling back to repo root:`,
-      (err as Error).message,
-    );
-    workingDirectory = repoRoot;
-  }
 
   const task: FaceTask = {
     id: taskId,
@@ -149,7 +133,7 @@ export async function submitTask(
     status: "running",
     prompt,
     summary: "Starting...",
-    workingDirectory,
+    workingDirectory: options?.workingDirectory ?? process.cwd(),
     createdAt: now,
     updatedAt: now,
     steps: [],
@@ -159,7 +143,7 @@ export async function submitTask(
     creatorRole: options?.creatorRole,
     assignedRoles: options?.assignedRoles,
     projectId: options?.projectId,
-    worktreePath,
+    worktreePath: options?.worktreePath,
   };
 
   // Write initial task file
@@ -405,7 +389,6 @@ export function cancelTask(taskId: string): boolean {
   if (child) {
     child.kill("SIGTERM");
     runningTasks.delete(taskId);
-    // Worktree cleanup happens in the close handler when the process exits
     return true;
   }
   return false;
