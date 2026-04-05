@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { PMSyncStatus } from "./PMSyncStatus";
 
 interface WorkflowSummary {
   id: string;
@@ -81,6 +82,7 @@ export function WorkflowList({ onSelect, refreshKey }: Props) {
                 {w.taskId && (
                   <span className="text-[10px] text-zinc-600">• has task</span>
                 )}
+                {w.issueUrl && <PMSyncStatus faceId={w.id} compact />}
               </div>
             </button>
           );

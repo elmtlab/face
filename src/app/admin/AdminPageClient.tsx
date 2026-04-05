@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { SecurityAuditDashboard } from "@/components/admin/SecurityAuditDashboard";
+import { PMSyncSettings } from "@/components/project/PMSyncSettings";
 
 interface RoleSummary {
   slug: string;
@@ -150,6 +151,11 @@ export function AdminPageClient({ roles }: { roles: RoleSummary[] }) {
                 </Link>
               ))}
             </div>
+          </section>
+
+          {/* PM Tool Sync Settings */}
+          <section className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
+            <PMSyncSettings />
           </section>
 
           {/* Security Audit Dashboard */}
