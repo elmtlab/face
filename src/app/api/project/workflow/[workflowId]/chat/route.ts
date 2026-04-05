@@ -11,7 +11,8 @@ import {
   type RequirementRevision,
 } from "@/lib/project/workflow";
 import { getActiveProvider } from "@/lib/project/manager";
-import { submitTask } from "@/lib/tasks/runner";
+import { submitTask, generateTaskId } from "@/lib/tasks/runner";
+import { createWorktree } from "@/lib/git/worktree";
 import { listProjects, getProject } from "@/lib/projects/store";
 import {
   runEvaluatorReview,
@@ -435,7 +436,22 @@ export async function POST(
 
     const prompt = buildImplementationPrompt(workflow.generatedStory, workflow.issueUrl ?? undefined);
 
+    // Create an isolated worktree so concurrent tasks don't conflict
+    const taskId = generateTaskId();
+    let worktreePath: string;
+    try {
+      worktreePath = createWorktree(process.cwd(), taskId);
+    } catch (err) {
+      return NextResponse.json(
+        { error: `Failed to create worktree: ${(err as Error).message}` },
+        { status: 500 },
+      );
+    }
+
     const result = await submitTask("claude-code", prompt, {
+      taskId,
+      workingDirectory: worktreePath,
+      worktreePath,
       title: `Implement: ${workflow.generatedStory.title}`,
       creatorRole: workflow.creatorRole ?? undefined,
       assignedRoles: workflow.assignedRoles.length > 0 ? workflow.assignedRoles : undefined,
@@ -609,8 +625,22 @@ export async function POST(
       body: body.requirement,
     };
 
-    // 4. Spawn a new implementation task
+    // 4. Spawn a new implementation task in an isolated worktree
+    const taskId = generateTaskId();
+    let worktreePath: string;
+    try {
+      worktreePath = createWorktree(process.cwd(), taskId);
+    } catch (err) {
+      return NextResponse.json(
+        { error: `Failed to create worktree: ${(err as Error).message}` },
+        { status: 500 },
+      );
+    }
+
     const result = await submitTask("claude-code", prompt, {
+      taskId,
+      workingDirectory: worktreePath,
+      worktreePath,
       title: `Revise: ${workflow.generatedStory.title} (v${version + 1})`,
       creatorRole: workflow.creatorRole ?? undefined,
       assignedRoles: workflow.assignedRoles.length > 0 ? workflow.assignedRoles : undefined,

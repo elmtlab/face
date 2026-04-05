@@ -51,6 +51,8 @@ export interface FaceTask {
   assignedRoles?: string[];
   /** Project ID this task belongs to */
   projectId?: string;
+  /** Path to the git worktree created for this task (if any) */
+  worktreePath?: string;
 }
 
 export interface AgentDetection {

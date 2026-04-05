@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { submitTask } from "@/lib/tasks/runner";
+import { submitTask, generateTaskId } from "@/lib/tasks/runner";
+import { createWorktree } from "@/lib/git/worktree";
 import { getKnownAgentIds } from "@/lib/agents/detect";
 import path from "path";
 
@@ -77,9 +78,24 @@ export async function POST(request: NextRequest) {
     : undefined;
   const safeProjectId = typeof projectId === "string" ? projectId : undefined;
 
+  // Create an isolated worktree so concurrent tasks don't conflict
+  const repoRoot = cwd ?? process.cwd();
+  const taskId = generateTaskId();
+  let worktreePath: string;
+  try {
+    worktreePath = createWorktree(repoRoot, taskId);
+  } catch (err) {
+    return NextResponse.json(
+      { error: `Failed to create worktree: ${(err as Error).message}` },
+      { status: 500 },
+    );
+  }
+
   const result = await submitTask(agentId, prompt.trim(), {
+    taskId,
     title: safeTitle,
-    workingDirectory: cwd,
+    workingDirectory: worktreePath,
+    worktreePath,
     linkedIssue: issueNumber,
     creatorRole: safeCreatorRole,
     assignedRoles: safeAssignedRoles,
