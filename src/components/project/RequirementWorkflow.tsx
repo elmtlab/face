@@ -755,6 +755,18 @@ function ApprovedView({
   onImplement: () => void;
   loading: boolean;
 }) {
+  const autoStarted = useRef(false);
+
+  // Auto-start debate when story is freshly approved (no prior debate)
+  useEffect(() => {
+    if (!autoStarted.current && !loading && !workflow.consensus) {
+      autoStarted.current = true;
+      onStartDebate();
+    }
+  }, [loading, workflow.consensus, onStartDebate]);
+
+  const isAutoStarting = !workflow.consensus && loading;
+
   return (
     <div className="p-6 flex flex-col items-center justify-center gap-4">
       <div className="w-16 h-16 rounded-full bg-emerald-600/20 flex items-center justify-center">
@@ -772,6 +784,14 @@ function ApprovedView({
           </>
         )}
       </p>
+
+      {isAutoStarting && (
+        <div className="flex items-center gap-2 px-4 py-2 rounded-md bg-indigo-600/10 border border-indigo-600/20">
+          <div className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse" />
+          <span className="text-xs text-indigo-300">Auto-starting agent debate...</span>
+        </div>
+      )}
+
       <div className="flex gap-3">
         <button
           onClick={onStartDebate}
@@ -789,8 +809,7 @@ function ApprovedView({
         </button>
       </div>
       <p className="text-[10px] text-zinc-600 text-center max-w-sm">
-        Agent Debate: Three AI agents (Planner, Evaluator, Generator) discuss the implementation plan until consensus.
-        Or skip directly to implementation.
+        The debate pipeline runs automatically after approval. Manual controls are available as fallbacks.
       </p>
     </div>
   );
@@ -811,10 +830,26 @@ function DebatingView({
 }) {
   const consensus = workflow.consensus;
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const autoImplementTriggered = useRef(false);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [consensus?.messages.length]);
+
+  // Auto-run next round when debate is still in progress
+  useEffect(() => {
+    if (!loading && consensus && !consensus.reached && !consensus.escalated) {
+      onRunRound();
+    }
+  }, [loading, consensus, onRunRound]);
+
+  // Auto-trigger implementation when consensus is reached
+  useEffect(() => {
+    if (!loading && consensus?.reached && !autoImplementTriggered.current) {
+      autoImplementTriggered.current = true;
+      onImplement();
+    }
+  }, [loading, consensus?.reached, onImplement]);
 
   const roleColors: Record<string, { bg: string; border: string; label: string; badge: string }> = {
     planner: { bg: "bg-blue-600/10", border: "border-blue-600/30", label: "text-blue-400", badge: "bg-blue-600/20" },
@@ -896,13 +931,23 @@ function DebatingView({
         <div ref={chatEndRef} />
       </div>
 
-      {/* Actions */}
+      {/* Pipeline status & actions */}
       <div className="border-t border-zinc-800 p-3 space-y-2">
+        {/* Auto-running indicator */}
+        {!consensus?.reached && !consensus?.escalated && (
+          <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-indigo-600/10 border border-indigo-600/20 mb-2">
+            <div className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse" />
+            <span className="text-xs text-indigo-300">
+              Pipeline running automatically — Round {consensus?.round ?? 0}/{consensus?.maxRounds ?? 10}
+            </span>
+          </div>
+        )}
+
         {consensus?.reached && (
           <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-emerald-600/10 border border-emerald-600/20 mb-2">
             <span className="text-emerald-400 text-sm">&#x2713;</span>
             <span className="text-xs text-emerald-300">
-              All three agents have reached consensus. Ready to implement.
+              Consensus reached — auto-starting implementation...
             </span>
           </div>
         )}
@@ -911,7 +956,7 @@ function DebatingView({
           <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-amber-600/10 border border-amber-600/20 mb-2">
             <span className="text-amber-400 text-sm">!</span>
             <span className="text-xs text-amber-300">
-              Debate reached max rounds without consensus. Review the conversation and decide whether to proceed.
+              Pipeline halted: debate reached {consensus.maxRounds} rounds without consensus. Review the conversation and decide whether to proceed or skip.
             </span>
           </div>
         )}
