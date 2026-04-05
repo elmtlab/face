@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { LoadingSpinner } from "@/components/shared/LoadingSpinner";
+import { ProjectFilterSelect } from "@/components/shared/ProjectFilterSelect";
 
 interface MilestoneData {
   id: string;
@@ -35,26 +36,31 @@ export function MilestoneSummaryWidget() {
   }
 
   return (
-    <div className="space-y-3">
-      {milestones.map((m) => (
-        <div key={m.id} className="rounded-lg border border-zinc-800 bg-zinc-900/30 p-3">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium text-zinc-200">{m.title}</span>
-            <span className="text-xs text-zinc-500">
-              {m.closedIssues}/{m.openIssues + m.closedIssues} done
-            </span>
+    <div>
+      <div className="flex items-center justify-end mb-2">
+        <ProjectFilterSelect />
+      </div>
+      <div className="space-y-3">
+        {milestones.map((m) => (
+          <div key={m.id} className="rounded-lg border border-zinc-800 bg-zinc-900/30 p-3">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-medium text-zinc-200">{m.title}</span>
+              <span className="text-xs text-zinc-500">
+                {m.closedIssues}/{m.openIssues + m.closedIssues} done
+              </span>
+            </div>
+            <div className="h-1.5 rounded-full bg-zinc-800">
+              <div
+                className="h-full rounded-full bg-blue-500 transition-all"
+                style={{ width: `${m.progress}%` }}
+              />
+            </div>
+            {m.dueDate && (
+              <p className="mt-1 text-xs text-zinc-600">Due {m.dueDate}</p>
+            )}
           </div>
-          <div className="h-1.5 rounded-full bg-zinc-800">
-            <div
-              className="h-full rounded-full bg-blue-500 transition-all"
-              style={{ width: `${m.progress}%` }}
-            />
-          </div>
-          {m.dueDate && (
-            <p className="mt-1 text-xs text-zinc-600">Due {m.dueDate}</p>
-          )}
-        </div>
-      ))}
+        ))}
+      </div>
     </div>
   );
 }

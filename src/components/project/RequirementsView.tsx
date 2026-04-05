@@ -5,6 +5,8 @@ import { RoleTagBadge } from "@/components/shared/RoleTagBadge";
 import { useRoleSlug } from "@/components/shared/useRoleSlug";
 import { Pagination } from "@/components/shared/Pagination";
 import { usePagination } from "@/components/shared/usePagination";
+import { ProjectFilterSelect } from "@/components/shared/ProjectFilterSelect";
+import { useProjectContext } from "@/lib/projects/ProjectContext";
 
 interface ChatMessage {
   role: "user" | "assistant";
@@ -47,11 +49,6 @@ interface WorkflowState {
   updatedAt: string;
 }
 
-interface ProjectInfo {
-  id: string;
-  name: string;
-  repoLink: string;
-}
 
 interface TaskInfo {
   id: string;
@@ -103,15 +100,14 @@ interface Props {
   activeProjectId?: string | null;
 }
 
-export function RequirementsView({ onSelectWorkflow, onNewWorkflow, activeProjectId }: Props) {
+export function RequirementsView({ onSelectWorkflow, onNewWorkflow }: Props) {
   const [workflows, setWorkflows] = useState<WorkflowState[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [taskStatuses, setTaskStatuses] = useState<Record<string, TaskInfo>>({});
   const [restartingId, setRestartingId] = useState<string | null>(null);
   const [roleFilter, setRoleFilter] = useState<string>("all");
-  const [projectFilter, setProjectFilter] = useState<string>(activeProjectId ?? "all");
-  const [projects, setProjects] = useState<ProjectInfo[]>([]);
+  const { filterProjectId: projectFilter, projects } = useProjectContext();
   const { currentSlug, roles } = useRoleSlug();
 
   const filteredWorkflows = workflows.filter((w) => {
@@ -130,13 +126,7 @@ export function RequirementsView({ onSelectWorkflow, onNewWorkflow, activeProjec
     resetPage();
   }, [roleFilter, projectFilter, resetPage]);
 
-  // Fetch projects for the filter dropdown
-  useEffect(() => {
-    fetch("/api/projects")
-      .then((r) => r.json())
-      .then((d) => setProjects(d.projects ?? []))
-      .catch(() => {});
-  }, []);
+  // Projects are provided by ProjectContext — no separate fetch needed
 
   useEffect(() => {
     const fetchWorkflows = () => {
@@ -231,18 +221,7 @@ export function RequirementsView({ onSelectWorkflow, onNewWorkflow, activeProjec
       <div className="px-6 py-4 border-b border-zinc-800 flex items-center justify-between">
         <h2 className="text-sm font-semibold text-zinc-200">Requirements</h2>
         <div className="flex items-center gap-2">
-          {projects.length > 1 && (
-            <select
-              value={projectFilter}
-              onChange={(e) => setProjectFilter(e.target.value)}
-              className="rounded-md border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs text-zinc-300 focus:outline-none focus:ring-1 focus:ring-indigo-600"
-            >
-              <option value="all">All Projects</option>
-              {projects.map((p) => (
-                <option key={p.id} value={p.id}>{p.name}</option>
-              ))}
-            </select>
-          )}
+          <ProjectFilterSelect />
           <select
             value={roleFilter}
             onChange={(e) => setRoleFilter(e.target.value)}

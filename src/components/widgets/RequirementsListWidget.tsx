@@ -35,7 +35,6 @@ export function RequirementsListWidget() {
     <div className="min-h-[400px] -m-4 overflow-hidden">
       <RequirementsView
         key={refreshKey}
-        activeProjectId={activeProjectId}
         onSelectWorkflow={(id) => {
           setSelectedWorkflowId(id);
           setShowWorkflow(true);

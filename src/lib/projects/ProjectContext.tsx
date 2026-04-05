@@ -10,22 +10,28 @@ interface Project {
 
 interface ProjectContextValue {
   activeProjectId: string | null;
+  /** Project filter for views — "all" means show data from every project. */
+  filterProjectId: string;
   projects: Project[];
   loaded: boolean;
   setActive: (id: string | null) => Promise<void>;
+  setFilterProjectId: (id: string) => void;
   refreshProjects: () => Promise<void>;
 }
 
 const ProjectContext = createContext<ProjectContextValue>({
   activeProjectId: null,
+  filterProjectId: "all",
   projects: [],
   loaded: false,
   setActive: async () => {},
+  setFilterProjectId: () => {},
   refreshProjects: async () => {},
 });
 
 export function ProjectProvider({ children }: { children: ReactNode }) {
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
+  const [filterProjectId, setFilterProjectId] = useState<string>("all");
   const [projects, setProjects] = useState<Project[]>([]);
   const [loaded, setLoaded] = useState(false);
 
@@ -67,7 +73,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <ProjectContext.Provider value={{ activeProjectId, projects, loaded, setActive, refreshProjects }}>
+    <ProjectContext.Provider value={{ activeProjectId, filterProjectId, projects, loaded, setActive, setFilterProjectId, refreshProjects }}>
       {children}
     </ProjectContext.Provider>
   );

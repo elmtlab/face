@@ -49,6 +49,8 @@ export interface FaceTask {
   creatorRole?: string;
   /** Role slugs relevant to this task (e.g. ["dev", "pm"]) */
   assignedRoles?: string[];
+  /** Project ID this task belongs to */
+  projectId?: string;
 }
 
 export interface AgentDetection {

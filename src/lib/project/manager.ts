@@ -63,6 +63,30 @@ export async function getActiveProvider(): Promise<ProjectProvider | null> {
   return provider;
 }
 
+/**
+ * Connect and return every configured provider.
+ * Results are cached the same way getActiveProvider() caches.
+ */
+export async function getAllProviders(): Promise<ProjectProvider[]> {
+  const config = loadConfig();
+  const providers: ProjectProvider[] = [];
+  for (const provConfig of config.providers) {
+    if (connectedProviders.has(provConfig.name)) {
+      providers.push(connectedProviders.get(provConfig.name)!);
+      continue;
+    }
+    try {
+      const provider = createProvider(provConfig);
+      await provider.connect(provConfig);
+      connectedProviders.set(provConfig.name, provider);
+      providers.push(provider);
+    } catch {
+      // Skip providers that fail to connect
+    }
+  }
+  return providers;
+}
+
 export async function addProvider(config: ProjectProviderConfig): Promise<{ ok: boolean; error?: string }> {
   const provider = createProvider(config);
   await provider.connect(config);
