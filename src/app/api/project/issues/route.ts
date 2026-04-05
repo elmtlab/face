@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { getActiveProvider } from "@/lib/project/manager";
 import { eventBus } from "@/lib/events/bus";
+import { syncTask } from "@/lib/pm-sync/worker";
+import { getActivePMSyncProviderName } from "@/lib/pm-sync/manager";
+import { getSyncReference } from "@/lib/pm-sync/store";
 
 export async function GET(req: Request) {
   const provider = await getActiveProvider();
@@ -39,5 +42,21 @@ export async function POST(req: Request) {
   const body = await req.json();
   const issue = await provider.createIssue(body);
   eventBus.emit("issue_created", { issue });
+
+  // Auto-sync to configured PM tool (non-blocking)
+  if (getActivePMSyncProviderName()) {
+    // Look up the synced PM project to link the task
+    const projectRef = getSyncReference(body.projectId ?? "");
+    syncTask({
+      faceId: issue.id,
+      externalProjectId: projectRef?.externalId ?? "",
+      title: issue.title,
+      description: issue.body,
+      priority: issue.priority,
+      status: issue.status,
+      labels: issue.labels?.map((l: { name: string }) => l.name),
+    });
+  }
+
   return NextResponse.json({ issue });
 }

@@ -1,3 +1,5 @@
+import { PMSyncFailureBanner } from "@/components/project/PMSyncFailureBanner";
+
 export default function ProjectLayout({
   children,
 }: {
@@ -5,6 +7,7 @@ export default function ProjectLayout({
 }) {
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
+      <PMSyncFailureBanner />
       {children}
     </div>
   );

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { PMSyncFailureBanner } from "@/components/project/PMSyncFailureBanner";
 
 export const metadata: Metadata = {
   title: "Admin - FACE",
@@ -12,6 +13,7 @@ export default function AdminLayout({
 }) {
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
+      <PMSyncFailureBanner />
       {children}
     </div>
   );

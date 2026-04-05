@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { listProjects, createProject } from "@/lib/projects/store";
+import { syncProject } from "@/lib/pm-sync/worker";
+import { getActivePMSyncProviderName } from "@/lib/pm-sync/manager";
 
 /** GET /api/projects — list all projects */
 export async function GET() {
@@ -19,6 +21,16 @@ export async function POST(request: NextRequest) {
     }
 
     const project = createProject(name, repoLink);
+
+    // Auto-sync to configured PM tool (non-blocking)
+    if (getActivePMSyncProviderName()) {
+      syncProject({
+        faceId: project.id,
+        name: project.name,
+        description: repoLink ? `Repository: ${repoLink}` : undefined,
+      });
+    }
+
     return NextResponse.json({ project });
   } catch {
     return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
