@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { LoadingSpinner } from "@/components/shared/LoadingSpinner";
+import { ProjectFilterSelect } from "@/components/shared/ProjectFilterSelect";
 
 interface ListIssue {
   id: string;
@@ -21,8 +22,10 @@ export function IssueListWidget({ filterLabel }: IssueListWidgetProps) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const params = filterLabel ? `?label=${encodeURIComponent(filterLabel)}` : "";
-    fetch(`/api/project/issues${params}`)
+    const params = new URLSearchParams();
+    if (filterLabel) params.set("label", filterLabel);
+    const qs = params.toString() ? `?${params.toString()}` : "";
+    fetch(`/api/project/issues${qs}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (data?.issues) setIssues(data.issues);
@@ -54,25 +57,30 @@ export function IssueListWidget({ filterLabel }: IssueListWidgetProps) {
   };
 
   return (
-    <div className="space-y-1 max-h-64 overflow-y-auto">
-      {issues.slice(0, 20).map((issue) => (
-        <div
-          key={issue.id}
-          className="flex items-center gap-2 rounded-md border border-zinc-800 bg-zinc-900/50 px-2 py-1.5 text-xs"
-        >
-          <span className={`${priorityColors[issue.priority] ?? "text-zinc-500"}`}>
-            {issue.priority === "none" ? "\u2022" : "\u25cf"}
-          </span>
-          <span className="text-zinc-500">#{issue.number}</span>
-          <span className="flex-1 truncate text-zinc-300">{issue.title}</span>
-          <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-xs text-zinc-500">
-            {issue.status}
-          </span>
-        </div>
-      ))}
-      {issues.length > 20 && (
-        <p className="text-xs text-zinc-600 pl-1">+{issues.length - 20} more</p>
-      )}
+    <div>
+      <div className="flex items-center justify-end mb-2">
+        <ProjectFilterSelect />
+      </div>
+      <div className="space-y-1 max-h-64 overflow-y-auto">
+        {issues.slice(0, 20).map((issue) => (
+          <div
+            key={issue.id}
+            className="flex items-center gap-2 rounded-md border border-zinc-800 bg-zinc-900/50 px-2 py-1.5 text-xs"
+          >
+            <span className={`${priorityColors[issue.priority] ?? "text-zinc-500"}`}>
+              {issue.priority === "none" ? "\u2022" : "\u25cf"}
+            </span>
+            <span className="text-zinc-500">#{issue.number}</span>
+            <span className="flex-1 truncate text-zinc-300">{issue.title}</span>
+            <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-xs text-zinc-500">
+              {issue.status}
+            </span>
+          </div>
+        ))}
+        {issues.length > 20 && (
+          <p className="text-xs text-zinc-600 pl-1">+{issues.length - 20} more</p>
+        )}
+      </div>
     </div>
   );
 }

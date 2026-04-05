@@ -7,12 +7,21 @@ import { TaskDetail } from "./TaskDetail";
 import { useRoleSlug } from "@/components/shared/useRoleSlug";
 import { Pagination } from "@/components/shared/Pagination";
 import { usePagination } from "@/components/shared/usePagination";
+import { ProjectFilterSelect } from "@/components/shared/ProjectFilterSelect";
+import { useProjectContext } from "@/lib/projects/ProjectContext";
+
+interface WorkflowRef {
+  taskId: string | null;
+  projectId: string | null;
+}
 
 export function TaskList() {
   const [tasks, setTasks] = useState<FaceTask[]>([]);
+  const [taskProjectMap, setTaskProjectMap] = useState<Map<string, string>>(new Map());
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [filter, setFilter] = useState<string>("all");
   const [roleFilter, setRoleFilter] = useState<string>("all");
+  const { filterProjectId: projectFilter } = useProjectContext();
   const { currentSlug, roles } = useRoleSlug();
 
   async function loadTasks() {
@@ -24,6 +33,22 @@ export function TaskList() {
       console.error("Failed to load tasks:", err);
     }
   }
+
+  // Build a task→project mapping from workflows
+  useEffect(() => {
+    fetch("/api/project/workflow")
+      .then((r) => r.json())
+      .then((d) => {
+        const map = new Map<string, string>();
+        for (const w of (d.workflows ?? []) as WorkflowRef[]) {
+          if (w.taskId && w.projectId) {
+            map.set(w.taskId, w.projectId);
+          }
+        }
+        setTaskProjectMap(map);
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     loadTasks();
@@ -39,6 +64,11 @@ export function TaskList() {
       const matches = t.creatorRole === slug || (t.assignedRoles ?? []).includes(slug);
       if (!matches) return false;
     }
+    // Project filter: use workflow mapping to find task's project
+    if (projectFilter !== "all") {
+      const taskProject = taskProjectMap.get(t.id);
+      if (taskProject !== projectFilter) return false;
+    }
     return true;
   });
 
@@ -47,7 +77,7 @@ export function TaskList() {
   // Reset page when filters change
   useEffect(() => {
     resetPage();
-  }, [filter, roleFilter, resetPage]);
+  }, [filter, roleFilter, projectFilter, resetPage]);
 
   async function handleDelete(taskId: string) {
     try {
@@ -86,6 +116,7 @@ export function TaskList() {
             )}
           </h2>
           <div className="flex items-center gap-1.5">
+            <ProjectFilterSelect />
             <select
               value={roleFilter}
               onChange={(e) => setRoleFilter(e.target.value)}

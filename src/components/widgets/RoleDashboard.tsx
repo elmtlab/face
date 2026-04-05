@@ -20,7 +20,7 @@ export function RoleDashboard({ role }: RoleDashboardProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const viewParam = searchParams.get("view");
-  const { activeProjectId, projects, setActive: setActiveProject } = useProjectContext();
+  const { filterProjectId, projects, setFilterProjectId } = useProjectContext();
 
   // Resolve active view: match query param to a sidebar link key, fallback to null (overview)
   const resolveView = useCallback(
@@ -80,14 +80,15 @@ export function RoleDashboard({ role }: RoleDashboardProps) {
           </Link>
         </div>
 
-        {/* Project switcher */}
-        {projects.length > 1 && (
+        {/* Project filter */}
+        {projects.length > 0 && (
           <div className="border-b border-zinc-800 px-3 py-2">
             <select
-              value={activeProjectId ?? ""}
-              onChange={(e) => setActiveProject(e.target.value || null)}
+              value={filterProjectId}
+              onChange={(e) => setFilterProjectId(e.target.value)}
               className="w-full rounded-md border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs text-zinc-300 focus:outline-none focus:ring-1 focus:ring-indigo-600"
             >
+              <option value="all">All Projects</option>
               {projects.map((p) => (
                 <option key={p.id} value={p.id}>{p.name}</option>
               ))}
@@ -194,14 +195,15 @@ export function RoleDashboard({ role }: RoleDashboardProps) {
               </button>
             </div>
 
-            {/* Project switcher (mobile) */}
-            {projects.length > 1 && (
+            {/* Project filter (mobile) */}
+            {projects.length > 0 && (
               <div className="border-b border-zinc-800 px-4 py-2">
                 <select
-                  value={activeProjectId ?? ""}
-                  onChange={(e) => setActiveProject(e.target.value || null)}
+                  value={filterProjectId}
+                  onChange={(e) => setFilterProjectId(e.target.value)}
                   className="w-full rounded-md border border-zinc-700 bg-zinc-800 px-2 py-1.5 text-xs text-zinc-300 focus:outline-none focus:ring-1 focus:ring-indigo-600"
                 >
+                  <option value="all">All Projects</option>
                   {projects.map((p) => (
                     <option key={p.id} value={p.id}>{p.name}</option>
                   ))}

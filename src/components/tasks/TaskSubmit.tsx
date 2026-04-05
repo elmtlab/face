@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { useRoleSlug } from "@/components/shared/useRoleSlug";
+import { useProjectContext } from "@/lib/projects/ProjectContext";
 
 interface Agent {
   id: string;
@@ -27,6 +28,7 @@ export function TaskSubmit({
   } | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { currentSlug: userRoleSlug } = useRoleSlug();
+  const { activeProjectId } = useProjectContext();
 
   useEffect(() => {
     fetch("/api/agents")
@@ -62,6 +64,7 @@ export function TaskSubmit({
           prompt: prompt.trim(),
           creatorRole: userRoleSlug ?? undefined,
           assignedRoles: userRoleSlug ? [userRoleSlug] : undefined,
+          projectId: activeProjectId ?? undefined,
         }),
       });
       const data = await res.json();
