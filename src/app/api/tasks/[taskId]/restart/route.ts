@@ -24,10 +24,11 @@ export async function POST(
     ? task.title
     : `Retry: ${task.title}`;
 
+  // Don't pass the old workingDirectory — it may have been a worktree
+  // that was cleaned up. submitTask() will create a fresh worktree.
   const result = await submitTask(task.agent, task.prompt, {
     title,
     linkedIssue: task.linkedIssue,
-    workingDirectory: task.workingDirectory,
   });
 
   if (result.error) {

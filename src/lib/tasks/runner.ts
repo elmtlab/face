@@ -7,6 +7,11 @@ import { postCompletionComment } from "./github-notify";
 import { createPRForCompletedTask } from "../project/pr-creator";
 export { describeToolUse } from "./describe-tool";
 import { describeToolUse } from "./describe-tool";
+import {
+  createWorktree,
+  removeWorktree,
+  cleanupOrphanedWorktrees,
+} from "../git/worktree";
 
 // Track running processes globally
 const globalForRunner = globalThis as unknown as {
@@ -37,11 +42,19 @@ export function cleanupOrphanedTasks(): void {
     const age = now - new Date(task.updatedAt).getTime();
     if (age < GRACE_PERIOD_MS) continue;
 
+    // Clean up worktree left behind by the crashed task
+    if (task.worktreePath) {
+      removeWorktree(process.cwd(), task.id);
+    }
+
     task.status = "failed";
     task.result = "Task process was interrupted (server restart or crash)";
     task.updatedAt = new Date().toISOString();
     writeTask(task);
   }
+
+  // Sweep for any worktree directories not associated with running tasks
+  cleanupOrphanedWorktrees(process.cwd(), new Set(runningTasks.keys()));
 }
 
 // Track whether cleanup has already run in this process to avoid
@@ -112,6 +125,23 @@ export async function submitTask(
   const taskId = generateTaskId();
   const now = new Date().toISOString();
 
+  // Resolve the base repo directory for this task
+  const repoRoot = options?.workingDirectory ?? process.cwd();
+
+  // Create an isolated git worktree so concurrent tasks don't conflict
+  let worktreePath: string | undefined;
+  let workingDirectory: string;
+  try {
+    worktreePath = createWorktree(repoRoot, taskId);
+    workingDirectory = worktreePath;
+  } catch (err) {
+    console.error(
+      `[face] Failed to create worktree for task ${taskId}, falling back to repo root:`,
+      (err as Error).message,
+    );
+    workingDirectory = repoRoot;
+  }
+
   const task: FaceTask = {
     id: taskId,
     agent: agentId,
@@ -119,7 +149,7 @@ export async function submitTask(
     status: "running",
     prompt,
     summary: "Starting...",
-    workingDirectory: options?.workingDirectory ?? process.cwd(),
+    workingDirectory,
     createdAt: now,
     updatedAt: now,
     steps: [],
@@ -129,6 +159,7 @@ export async function submitTask(
     creatorRole: options?.creatorRole,
     assignedRoles: options?.assignedRoles,
     projectId: options?.projectId,
+    worktreePath,
   };
 
   // Write initial task file
@@ -324,11 +355,22 @@ function spawnClaudeCode(task: FaceTask, binaryPath: string): void {
     // Post completion comment to linked GitHub issue (fire-and-forget)
     postCompletionComment(task);
 
-    // Auto-create PR for completed implementation tasks (fire-and-forget)
+    // Auto-create PR for completed implementation tasks (fire-and-forget).
+    // Clean up the worktree AFTER PR creation so git operations can use it.
+    const cleanupWorktree = () => {
+      if (task.worktreePath) {
+        removeWorktree(process.cwd(), task.id);
+      }
+    };
+
     if (task.status === "completed") {
-      createPRForCompletedTask(task).catch((err) =>
-        console.error(`[face] PR creation failed for task ${task.id}:`, err),
-      );
+      createPRForCompletedTask(task)
+        .catch((err) =>
+          console.error(`[face] PR creation failed for task ${task.id}:`, err),
+        )
+        .finally(cleanupWorktree);
+    } else {
+      cleanupWorktree();
     }
   });
 
@@ -346,6 +388,11 @@ function spawnClaudeCode(task: FaceTask, binaryPath: string): void {
 
     // Post completion comment to linked GitHub issue (fire-and-forget)
     postCompletionComment(task);
+
+    // Clean up worktree on spawn failure
+    if (task.worktreePath) {
+      removeWorktree(process.cwd(), task.id);
+    }
   });
 }
 
@@ -358,6 +405,7 @@ export function cancelTask(taskId: string): boolean {
   if (child) {
     child.kill("SIGTERM");
     runningTasks.delete(taskId);
+    // Worktree cleanup happens in the close handler when the process exits
     return true;
   }
   return false;
