@@ -3,6 +3,7 @@ import { detectAllAgents } from "./agents/detect";
 import { ensureFaceDir, watchTasks } from "./tasks/file-manager";
 import { eventBus } from "./events/bus";
 import { startPRPoller } from "./project/pr-poller";
+import { startScheduler as startListenerScheduler } from "./listener/scheduler";
 
 const globalForStartup = globalThis as unknown as {
   __faceInitialized?: boolean;
@@ -52,6 +53,13 @@ export async function runStartup(): Promise<void> {
 
   // 5. Start background PR merge-status poller
   startPRPoller();
+
+  // 6. Start Listener scheduler (if enabled in config)
+  try {
+    startListenerScheduler();
+  } catch (err) {
+    console.error("[face] Listener scheduler failed to start:", err);
+  }
 
   console.log("[face] Server ready");
 }

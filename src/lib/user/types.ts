@@ -7,6 +7,7 @@ export const USER_ROLES = [
   "banker",
   "sales",
   "designer",
+  "marketing",
   "other",
 ] as const;
 
@@ -30,6 +31,7 @@ export const ROLE_LABELS: Record<UserRole, string> = {
   banker: "Banker",
   sales: "Sales",
   designer: "Designer",
+  marketing: "Marketing",
   other: "Other",
 };
 
@@ -107,6 +109,15 @@ export const ROLE_FEATURE_DEFAULTS: Record<UserRole, Record<string, number>> = {
     "agent-list": 0.5,
     "health-banner": 0.4,
     "agent-setup": 0.4,
+  },
+  marketing: {
+    "task-submit": 1.0,
+    "task-list": 0.8,
+    "task-detail": 0.7,
+    "task-filter": 0.5,
+    "agent-list": 0.3,
+    "health-banner": 0.2,
+    "agent-setup": 0.2,
   },
   other: {
     "task-submit": 0.8,

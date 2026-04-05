@@ -128,6 +128,12 @@ const BUILT_IN_ROLES: RoleDefinition[] = [
         icon: "▣",
         widgets: [{ type: "project-manager", title: "Projects", size: "full" }],
       },
+      {
+        key: "listener",
+        label: "Listener",
+        icon: "◈",
+        widgets: [{ type: "listener", title: "Listener", size: "full" }],
+      },
     ],
   },
   {
@@ -393,6 +399,42 @@ const BUILT_IN_ROLES: RoleDefinition[] = [
     ],
     sidebarLinks: [
       { key: "tasks", label: "Sales Tasks", icon: "▤", widgets: [{ type: "task-list", title: "Sales Tasks", size: "full" }] },
+      { key: "listener", label: "Listener", icon: "◈", widgets: [{ type: "listener", title: "Listener", size: "full" }] },
+    ],
+  },
+  {
+    slug: "marketing",
+    label: "Marketing",
+    iconPath:
+      "M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z",
+    description:
+      "Social media management, content scheduling, and audience engagement powered by Listener.",
+    routePath: "/marketing",
+    userRole: "marketing",
+    permissions: {
+      canSubmitTasks: true,
+      canEditIssues: false,
+      canConfigure: true,
+      canViewProject: false,
+      readOnly: false,
+    },
+    aiBehavior: {
+      description:
+        "Assists with social media content creation, trend monitoring, audience engagement analysis, and brand voice management.",
+      promptTemplates: [
+        "What topics are trending in AI right now?",
+        "Draft a tweet about {topic}",
+        "Analyze engagement on our recent posts",
+      ],
+      relevantEvents: ["task_completed", "task_failed"],
+    },
+    widgets: [
+      { type: "task-submit", title: "Ask AI", size: "full" },
+      { type: "listener", title: "Listener", size: "full" },
+    ],
+    sidebarLinks: [
+      { key: "listener", label: "Listener", icon: "◈", widgets: [{ type: "listener", title: "Listener", size: "full" }] },
+      { key: "tasks", label: "Tasks", icon: "▤", widgets: [{ type: "task-list", title: "Marketing Tasks", size: "full" }] },
     ],
   },
   {
