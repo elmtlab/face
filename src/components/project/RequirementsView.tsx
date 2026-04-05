@@ -54,6 +54,7 @@ interface TaskInfo {
   id: string;
   status: string;
   summary?: string;
+  result?: string | null;
 }
 
 const PHASES: { key: Phase; label: string }[] = [
@@ -345,8 +346,18 @@ export function RequirementsView({ onSelectWorkflow, onNewWorkflow }: Props) {
                             const taskInfo = taskStatuses[w.taskId];
                             detail = taskInfo ? `Task: ${taskInfo.status}` : `Task: ${w.taskId.slice(0, 12)}...`;
                           }
-                          if (phase.key === "done" && w.pr?.status === "merged") {
-                            detail = `Auto-completed via PR #${w.pr.number}`;
+                          if (phase.key === "done" && w.phase === "done") {
+                            const taskInfo = w.taskId ? taskStatuses[w.taskId] : null;
+                            if (taskInfo?.result) {
+                              const firstLine = taskInfo.result.split("\n")[0].trim();
+                              detail = firstLine.length > 120 ? firstLine.slice(0, 117) + "..." : firstLine;
+                            } else if (taskInfo?.summary) {
+                              detail = taskInfo.summary;
+                            } else if (w.pr?.status === "merged") {
+                              detail = `Completed via PR #${w.pr.number}`;
+                            } else {
+                              detail = "Completed";
+                            }
                           }
                           if (phase.key === "planning" && w.generatedStory) {
                             detail = "Story generated";

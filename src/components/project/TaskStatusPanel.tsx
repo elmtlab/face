@@ -73,8 +73,10 @@ export function TaskStatusPanel({ taskId, onStatusChange, onRestart }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [markingFailed, setMarkingFailed] = useState(false);
   const [expandedSection, setExpandedSection] = useState<"activities" | "steps" | "result" | null>(null);
-  // Default to steps when there are steps but no activities
-  const defaultSection = task?.activities?.length ? "activities" : task?.steps?.length ? "steps" : null;
+  // Default to result for completed tasks, otherwise activities or steps
+  const defaultSection = task?.result && TERMINAL_STATUSES.has(task.status)
+    ? "result"
+    : task?.activities?.length ? "activities" : task?.steps?.length ? "steps" : null;
   const activeSection = expandedSection ?? defaultSection;
 
   // Single polling effect — fetches immediately, then every 3s until terminal

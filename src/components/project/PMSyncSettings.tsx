@@ -138,19 +138,6 @@ export function PMSyncSettings() {
     }
   };
 
-  const handleSetActive = async (name: string) => {
-    try {
-      const res = await fetch("/api/pm-sync/config", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ active: name }),
-      });
-      if (res.ok) fetchConfig();
-    } catch {
-      // ignore
-    }
-  };
-
   if (loading) {
     return (
       <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4">
@@ -208,20 +195,12 @@ export function PMSyncSettings() {
                   <span className="text-[10px] text-zinc-500 ml-2">
                     {PROVIDER_LABELS[p.type] ?? p.type}
                   </span>
-                  {config.active === p.name && (
-                    <span className="text-[10px] text-indigo-400 ml-2">active</span>
+                  {p.enabled && (
+                    <span className="text-[10px] text-emerald-400 ml-2">connected</span>
                   )}
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                {config.active !== p.name && p.enabled && (
-                  <button
-                    onClick={() => handleSetActive(p.name)}
-                    className="text-[10px] px-2 py-0.5 rounded text-zinc-400 hover:text-zinc-200 transition-colors"
-                  >
-                    Set active
-                  </button>
-                )}
                 <button
                   onClick={() => handleToggle(p.name, !p.enabled)}
                   className={`text-[10px] px-2 py-0.5 rounded transition-colors ${

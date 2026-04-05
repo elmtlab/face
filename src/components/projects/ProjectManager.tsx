@@ -17,7 +17,7 @@ interface Project {
  * Project creation uses a conversational AI agent flow instead of a manual form.
  */
 export function ProjectManager() {
-  const { activeProjectId, setActive: setGlobalActive, refreshProjects } = useProjectContext();
+  const { refreshProjects } = useProjectContext();
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [showSetupChat, setShowSetupChat] = useState(false);
@@ -83,14 +83,6 @@ export function ProjectManager() {
       await fetchProjects();
     } catch (e) {
       setError((e as Error).message);
-    }
-  };
-
-  const handleSetActive = async (id: string) => {
-    try {
-      await setGlobalActive(id);
-    } catch {
-      setError("Failed to set active project");
     }
   };
 
@@ -207,14 +199,10 @@ export function ProjectManager() {
         </div>
       ) : (
         <div className="space-y-2">
-          {projects.map((project) => {
-            const isActive = project.id === activeProjectId;
-            return (
+          {projects.map((project) => (
               <div
                 key={project.id}
-                className={`bg-zinc-900 border rounded-lg p-3 ${
-                  isActive ? "border-indigo-600/50" : "border-zinc-800"
-                }`}
+                className="bg-zinc-900 border border-zinc-800 rounded-lg p-3"
               >
                 <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0 flex-1">
@@ -222,11 +210,6 @@ export function ProjectManager() {
                       <span className="text-sm font-medium text-zinc-200 truncate">
                         {project.name}
                       </span>
-                      {isActive && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-600/20 text-indigo-400 border border-indigo-600/30">
-                          Active
-                        </span>
-                      )}
                     </div>
                     {project.repoLink && (
                       <a
@@ -241,14 +224,6 @@ export function ProjectManager() {
                   </div>
 
                   <div className="flex items-center gap-1 shrink-0">
-                    {!isActive && (
-                      <button
-                        onClick={() => handleSetActive(project.id)}
-                        className="text-[10px] px-2 py-1 rounded border border-zinc-700 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors"
-                      >
-                        Set Active
-                      </button>
-                    )}
                     <button
                       onClick={() => openEditForm(project)}
                       className="text-[10px] px-2 py-1 rounded border border-zinc-700 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors"
@@ -281,8 +256,7 @@ export function ProjectManager() {
                   </div>
                 </div>
               </div>
-            );
-          })}
+          ))}
 
           {/* Migration button — show when there are projects */}
           <button
