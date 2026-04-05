@@ -325,9 +325,17 @@ function spawnClaudeCode(task: FaceTask, binaryPath: string): void {
 
     task.updatedAt = new Date().toISOString();
 
-    // If no result was captured from stream events, fall back to stderr
+    // If no result was captured from stream events, fall back to stderr or
+    // a human-friendly message.  "Process exited with code 0" is confusing in
+    // the UI so we avoid it for successful runs.
     if (!task.result) {
-      task.result = stderr || `Process exited with code ${code}`;
+      if (stderr) {
+        task.result = stderr;
+      } else if (code !== 0) {
+        task.result = `Process exited with code ${code}`;
+      }
+      // For code 0 with no captured output, leave task.result null so the UI
+      // can show its own contextual fallback (e.g. "Completed").
     }
 
     writeTask(task);

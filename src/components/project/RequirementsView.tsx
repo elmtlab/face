@@ -348,7 +348,7 @@ export function RequirementsView({ onSelectWorkflow, onNewWorkflow }: Props) {
                           }
                           if (phase.key === "done" && w.phase === "done") {
                             const taskInfo = w.taskId ? taskStatuses[w.taskId] : null;
-                            if (taskInfo?.result) {
+                            if (taskInfo?.result && !/^Process exited with code \d+$/.test(taskInfo.result.trim())) {
                               // Show first line of the result as a concise outcome
                               const firstLine = taskInfo.result.split("\n")[0].trim();
                               detail = firstLine.length > 120 ? firstLine.slice(0, 117) + "..." : firstLine;
