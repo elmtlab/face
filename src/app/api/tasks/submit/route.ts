@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { submitTask } from "@/lib/tasks/runner";
 import { getKnownAgentIds } from "@/lib/agents/detect";
+import { resolveWorkingDirectory } from "@/lib/project/repo-manager";
 import path from "path";
 
 const KNOWN_AGENTS = new Set(getKnownAgentIds());
@@ -77,9 +78,28 @@ export async function POST(request: NextRequest) {
     : undefined;
   const safeProjectId = typeof projectId === "string" ? projectId : undefined;
 
+  // If a projectId is provided and no explicit workingDirectory, resolve
+  // the project's repo to a local worktree for isolated implementation.
+  let resolvedCwd = cwd;
+  if (safeProjectId && !resolvedCwd) {
+    try {
+      const storyId = `task-${Date.now().toString(36)}`;
+      const storyTitle = typeof title === "string" ? title : undefined;
+      const worktree = resolveWorkingDirectory(safeProjectId, storyId, storyTitle ?? "implementation");
+      if (worktree.clonePath) {
+        resolvedCwd = worktree.workingDirectory;
+      }
+    } catch (err) {
+      return NextResponse.json(
+        { error: `Failed to prepare project repository: ${(err as Error).message}` },
+        { status: 500 },
+      );
+    }
+  }
+
   const result = await submitTask(agentId, prompt.trim(), {
     title: safeTitle,
-    workingDirectory: cwd,
+    workingDirectory: resolvedCwd,
     linkedIssue: issueNumber,
     creatorRole: safeCreatorRole,
     assignedRoles: safeAssignedRoles,

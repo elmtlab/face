@@ -13,6 +13,7 @@ import {
 import { getActiveProvider } from "@/lib/project/manager";
 import { submitTask } from "@/lib/tasks/runner";
 import { listProjects, getProject } from "@/lib/projects/store";
+import { resolveWorkingDirectory } from "@/lib/project/repo-manager";
 import {
   runEvaluatorReview,
   runDebateRound,
@@ -435,10 +436,28 @@ export async function POST(
 
     const prompt = buildImplementationPrompt(workflow.generatedStory, workflow.issueUrl ?? undefined);
 
+    // Resolve working directory: clone project repo + create worktree if repoLink exists
+    let workingDirectory: string | undefined;
+    try {
+      const worktree = resolveWorkingDirectory(
+        workflow.projectId,
+        workflow.id,
+        workflow.generatedStory.title,
+      );
+      workingDirectory = worktree.workingDirectory;
+    } catch (err) {
+      return NextResponse.json(
+        { error: `Failed to prepare project repository: ${(err as Error).message}` },
+        { status: 500 },
+      );
+    }
+
     const result = await submitTask("claude-code", prompt, {
       title: `Implement: ${workflow.generatedStory.title}`,
       creatorRole: workflow.creatorRole ?? undefined,
       assignedRoles: workflow.assignedRoles.length > 0 ? workflow.assignedRoles : undefined,
+      workingDirectory,
+      projectId: workflow.projectId ?? undefined,
     });
 
     if (result.error) {
@@ -609,11 +628,29 @@ export async function POST(
       body: body.requirement,
     };
 
-    // 4. Spawn a new implementation task
+    // 4. Resolve working directory for the project's repo
+    let workingDirectory: string | undefined;
+    try {
+      const worktree = resolveWorkingDirectory(
+        workflow.projectId,
+        workflow.id,
+        workflow.generatedStory.title,
+      );
+      workingDirectory = worktree.workingDirectory;
+    } catch (err) {
+      return NextResponse.json(
+        { error: `Failed to prepare project repository: ${(err as Error).message}` },
+        { status: 500 },
+      );
+    }
+
+    // 5. Spawn a new implementation task
     const result = await submitTask("claude-code", prompt, {
       title: `Revise: ${workflow.generatedStory.title} (v${version + 1})`,
       creatorRole: workflow.creatorRole ?? undefined,
       assignedRoles: workflow.assignedRoles.length > 0 ? workflow.assignedRoles : undefined,
+      workingDirectory,
+      projectId: workflow.projectId ?? undefined,
     });
 
     if (result.error) {

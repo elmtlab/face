@@ -51,6 +51,14 @@ export interface FaceTask {
   assignedRoles?: string[];
   /** Project ID this task belongs to */
   projectId?: string;
+  /** Repo metadata when task runs in a per-project worktree */
+  repoInfo?: {
+    owner: string;
+    repo: string;
+    repoPath: string;
+    branchName: string;
+    worktreePath: string;
+  };
 }
 
 export interface AgentDetection {

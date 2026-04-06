@@ -4,6 +4,11 @@
  * Detects the branch the agent created during implementation, pushes it
  * (if needed), and opens a PR back to the base branch. Updates the
  * associated workflow with PR metadata so the poller can track it.
+ *
+ * For per-project repos using worktrees, this module:
+ *   - Detects the target repo from the git remote (not the FACE provider)
+ *   - Creates the PR in the project's repo
+ *   - Cleans up the worktree after successful PR creation
  */
 
 import { execSync } from "child_process";
@@ -14,6 +19,12 @@ import {
   loadWorkflow,
   saveWorkflow,
 } from "./workflow";
+import {
+  getWorktreeClonePath,
+  cleanupWorktree,
+  parseGitHubUrl,
+} from "./repo-manager";
+import { listProviderConfigs } from "./manager";
 import type { FaceTask } from "../tasks/types";
 
 /**
@@ -30,11 +41,15 @@ export async function createPRForCompletedTask(task: FaceTask): Promise<void> {
   );
   if (!workflow) return;
 
-  const provider = await getActiveProvider();
-  if (!provider || provider.type !== "github") return;
-
-  const gh = provider as GitHubProvider;
   const cwd = task.workingDirectory;
+
+  // Determine whether this is a worktree (per-project repo) or the FACE repo
+  const clonePath = getWorktreeClonePath(cwd);
+
+  // Resolve the GitHub provider for PR operations.
+  // For worktrees, detect the repo from the git remote; for FACE repo, use the active provider.
+  const gh = await resolveGitHubProvider(cwd);
+  if (!gh) return;
 
   try {
     // Detect the current branch in the working directory
@@ -51,6 +66,7 @@ export async function createPRForCompletedTask(task: FaceTask): Promise<void> {
       console.log(
         `[face] Task ${task.id} completed on ${baseBranch} — skipping PR creation`,
       );
+      cleanupWorktreeIfNeeded(clonePath, cwd);
       return;
     }
 
@@ -98,6 +114,7 @@ export async function createPRForCompletedTask(task: FaceTask): Promise<void> {
           // best-effort
         }
       }
+      // Don't clean up worktree on conflict — user may need to resolve manually
       return;
     }
 
@@ -120,6 +137,7 @@ export async function createPRForCompletedTask(task: FaceTask): Promise<void> {
         repo: gh.getRepo(),
         branch,
       });
+      cleanupWorktreeIfNeeded(clonePath, cwd);
       return;
     }
 
@@ -169,11 +187,107 @@ export async function createPRForCompletedTask(task: FaceTask): Promise<void> {
         // best-effort
       }
     }
+
+    // Clean up worktree after successful PR creation
+    cleanupWorktreeIfNeeded(clonePath, cwd);
   } catch (err) {
     console.error(
       `[face] Failed to create PR for task ${task.id}:`,
       (err as Error).message,
     );
+  }
+}
+
+/**
+ * Resolve a GitHubProvider for the repo that the working directory belongs to.
+ *
+ * For per-project repos (worktrees), detects owner/repo from the git remote
+ * and creates a GitHubProvider connected to that repo using the configured token.
+ *
+ * For the FACE repo, returns the active provider as before.
+ */
+async function resolveGitHubProvider(cwd: string): Promise<GitHubProvider | null> {
+  // Try to detect the remote repo from the working directory
+  const remoteRepo = getRemoteRepo(cwd);
+
+  // Get the active provider to check if it matches or to borrow the token
+  const activeProvider = await getActiveProvider();
+
+  if (remoteRepo && activeProvider?.type === "github") {
+    const activeGh = activeProvider as GitHubProvider;
+    const activeRepo = activeGh.getRepo();
+
+    // If the remote matches the active provider, just use it
+    if (remoteRepo === activeRepo) {
+      return activeGh;
+    }
+
+    // Different repo — create a provider for the project's repo using the same token
+    const token = getProviderToken();
+    if (token) {
+      const gh = new GitHubProvider();
+      await gh.connect({
+        type: "github",
+        name: `project-${remoteRepo}`,
+        scope: remoteRepo,
+        credentials: { token },
+      });
+      return gh;
+    }
+  }
+
+  // Fallback to active provider
+  if (activeProvider?.type === "github") {
+    return activeProvider as GitHubProvider;
+  }
+
+  return null;
+}
+
+/**
+ * Extract owner/repo from the origin remote of a git working directory.
+ */
+function getRemoteRepo(cwd: string): string | null {
+  try {
+    const remoteUrl = execSync("git remote get-url origin", {
+      cwd,
+      encoding: "utf-8",
+      stdio: "pipe",
+    }).trim();
+
+    const parsed = parseGitHubUrl(remoteUrl);
+    if (parsed) {
+      return `${parsed.owner}/${parsed.repo}`;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Get the GitHub token from the configured provider.
+ */
+function getProviderToken(): string | null {
+  const configs = listProviderConfigs();
+  const ghConfig = configs.find((c) => c.type === "github");
+  return ghConfig?.credentials?.token ?? null;
+}
+
+/**
+ * Clean up a worktree if the working directory is in one.
+ */
+function cleanupWorktreeIfNeeded(clonePath: string | null, worktreePath: string): void {
+  if (clonePath) {
+    try {
+      cleanupWorktree(clonePath, worktreePath);
+      console.log(`[face] Cleaned up worktree: ${worktreePath}`);
+    } catch (err) {
+      console.error(
+        `[face] Failed to clean up worktree ${worktreePath}:`,
+        (err as Error).message,
+      );
+    }
   }
 }
 
