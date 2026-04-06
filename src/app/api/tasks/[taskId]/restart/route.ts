@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { readTask } from "@/lib/tasks/file-manager";
 import { submitTask } from "@/lib/tasks/runner";
+import { resolveWorkingDirectory } from "@/lib/project/repo-manager";
 
 export async function POST(
   _request: NextRequest,
@@ -24,10 +25,26 @@ export async function POST(
     ? task.title
     : `Retry: ${task.title}`;
 
+  // Re-resolve working directory from project repo if applicable.
+  // The original worktree may have been cleaned up after failure.
+  let workingDirectory = task.workingDirectory;
+  if (task.projectId) {
+    try {
+      const storyId = `retry-${Date.now().toString(36)}`;
+      const worktree = resolveWorkingDirectory(task.projectId, storyId, title);
+      if (worktree.clonePath) {
+        workingDirectory = worktree.workingDirectory;
+      }
+    } catch {
+      // Fall back to original working directory
+    }
+  }
+
   const result = await submitTask(task.agent, task.prompt, {
     title,
     linkedIssue: task.linkedIssue,
-    workingDirectory: task.workingDirectory,
+    workingDirectory,
+    projectId: task.projectId,
   });
 
   if (result.error) {

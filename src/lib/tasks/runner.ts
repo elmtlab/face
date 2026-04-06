@@ -1,10 +1,11 @@
-import { spawn, ChildProcess } from "child_process";
+import { spawn, execSync, ChildProcess } from "child_process";
 import { readConfig } from "./file-manager";
 import { writeTask, readTask, readAllTasks } from "./file-manager";
 import { eventBus } from "../events/bus";
 import type { FaceTask } from "./types";
 import { postCompletionComment } from "./github-notify";
 import { createPRForCompletedTask } from "../project/pr-creator";
+import { cleanupWorktree, getWorktreeClonePath } from "../project/repo-manager";
 export { describeToolUse } from "./describe-tool";
 import { describeToolUse } from "./describe-tool";
 
@@ -112,6 +113,37 @@ export async function submitTask(
   const taskId = generateTaskId();
   const now = new Date().toISOString();
 
+  // Determine working directory. Callers (workflow route, submit API) resolve
+  // per-project worktrees before calling submitTask and pass the path here.
+  const workingDirectory = options?.workingDirectory ?? process.cwd();
+
+  // Detect if this working directory is inside a git worktree so we can
+  // record repo info for cleanup after completion.
+  const clonePath = getWorktreeClonePath(workingDirectory);
+  let repoInfo: FaceTask["repoInfo"];
+  if (clonePath) {
+    try {
+      const branch = execSync("git rev-parse --abbrev-ref HEAD", {
+        cwd: workingDirectory,
+        encoding: "utf-8",
+        stdio: "pipe",
+      }).trim();
+      // Extract owner/repo from clone path (~/.face/repos/<owner>/<repo>)
+      const parts = clonePath.split("/");
+      const repo = parts[parts.length - 1];
+      const owner = parts[parts.length - 2];
+      repoInfo = {
+        owner,
+        repo,
+        repoPath: clonePath,
+        branchName: branch,
+        worktreePath: workingDirectory,
+      };
+    } catch {
+      // Not critical — continue without repo info
+    }
+  }
+
   const task: FaceTask = {
     id: taskId,
     agent: agentId,
@@ -119,7 +151,7 @@ export async function submitTask(
     status: "running",
     prompt,
     summary: "Starting...",
-    workingDirectory: options?.workingDirectory ?? process.cwd(),
+    workingDirectory,
     createdAt: now,
     updatedAt: now,
     steps: [],
@@ -129,6 +161,7 @@ export async function submitTask(
     creatorRole: options?.creatorRole,
     assignedRoles: options?.assignedRoles,
     projectId: options?.projectId,
+    repoInfo,
   };
 
   // Write initial task file
@@ -330,6 +363,16 @@ function spawnClaudeCode(task: FaceTask, binaryPath: string): void {
         console.error(`[face] PR creation failed for task ${task.id}:`, err),
       );
     }
+
+    // Clean up worktree on failure (PR creator handles cleanup on success)
+    if (task.status === "failed" && task.repoInfo) {
+      try {
+        cleanupWorktree(task.repoInfo.repoPath, task.repoInfo.worktreePath);
+        console.log(`[face] Cleaned up worktree for failed task ${task.id}`);
+      } catch {
+        // best-effort
+      }
+    }
   });
 
   child.on("error", (err) => {
@@ -346,6 +389,15 @@ function spawnClaudeCode(task: FaceTask, binaryPath: string): void {
 
     // Post completion comment to linked GitHub issue (fire-and-forget)
     postCompletionComment(task);
+
+    // Clean up worktree on failure
+    if (task.repoInfo) {
+      try {
+        cleanupWorktree(task.repoInfo.repoPath, task.repoInfo.worktreePath);
+      } catch {
+        // best-effort
+      }
+    }
   });
 }
 
