@@ -95,6 +95,9 @@ export interface PMSyncProvider {
 
   /** Update an existing task/issue in the external PM tool */
   updateTask(externalId: string, input: Partial<PMTaskInput>): Promise<PMSyncResult>;
+
+  /** Archive (cancel) a task/issue in the external PM tool */
+  archiveTask(externalId: string): Promise<PMSyncResult>;
 }
 
 // ── Provider factory ──────────────────────────────────────────────

@@ -5,6 +5,9 @@ export async function GET(request: NextRequest) {
   const projectId = request.nextUrl.searchParams.get("projectId");
   let workflows = listWorkflows();
 
+  // Exclude soft-deleted (cancelled) workflows from the default view
+  workflows = workflows.filter((w) => w.phase !== "cancelled");
+
   // Filter by project if requested
   if (projectId) {
     workflows = workflows.filter((w) => w.projectId === projectId);
