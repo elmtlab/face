@@ -107,6 +107,9 @@ export function RequirementsView({ onSelectWorkflow, onNewWorkflow }: Props) {
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [taskStatuses, setTaskStatuses] = useState<Record<string, TaskInfo>>({});
   const [restartingId, setRestartingId] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [roleFilter, setRoleFilter] = useState<string>("all");
   const { filterProjectId: projectFilter, projects } = useProjectContext();
   const { currentSlug, roles } = useRoleSlug();
@@ -208,6 +211,30 @@ export function RequirementsView({ onSelectWorkflow, onNewWorkflow }: Props) {
     }
   };
 
+  const handleDelete = async (workflowId: string) => {
+    setDeletingId(workflowId);
+    setDeleteError(null);
+    try {
+      const res = await fetch(`/api/project/workflow/${workflowId}`, { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok) {
+        const msg = data.syncError
+          ? `Failed to archive in PM tool: ${data.error}`
+          : data.error ?? "Failed to delete requirement";
+        setDeleteError(msg);
+        return;
+      }
+      // Remove from local state immediately
+      setWorkflows((prev) => prev.filter((w) => w.id !== workflowId));
+      setConfirmDeleteId(null);
+    } catch (err) {
+      setDeleteError("Failed to delete requirement");
+      console.error("Failed to delete requirement:", err);
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full text-zinc-500 animate-pulse">
@@ -292,7 +319,7 @@ export function RequirementsView({ onSelectWorkflow, onNewWorkflow }: Props) {
 
                     <button
                       onClick={() => onSelectWorkflow(w.id)}
-                      className="flex-1 text-left py-3 pr-4 min-w-0"
+                      className="flex-1 text-left py-3 pr-2 min-w-0"
                     >
                       <div className="flex items-center justify-between gap-3">
                         <span className="text-sm text-zinc-200 truncate">{title}</span>
@@ -324,6 +351,22 @@ export function RequirementsView({ onSelectWorkflow, onNewWorkflow }: Props) {
                           </span>
                         </div>
                       </div>
+                    </button>
+
+                    {/* Delete icon button */}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setConfirmDeleteId(w.id);
+                        setDeleteError(null);
+                        if (!expandedIds.has(w.id)) toggleExpand(w.id);
+                      }}
+                      title="Delete requirement"
+                      className="pr-3 py-3 pl-1 text-zinc-600 hover:text-red-400 transition-colors shrink-0"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
+                        <path fillRule="evenodd" d="M5 3.25V4H2.75a.75.75 0 0 0 0 1.5h.3l.815 8.15A1.5 1.5 0 0 0 5.357 15h5.285a1.5 1.5 0 0 0 1.493-1.35l.815-8.15h.3a.75.75 0 0 0 0-1.5H11V3.25A2.25 2.25 0 0 0 8.75 1h-1.5A2.25 2.25 0 0 0 5 3.25Zm2.25-.75a.75.75 0 0 0-.75.75V4h3V3.25a.75.75 0 0 0-.75-.75h-1.5ZM6.05 6a.75.75 0 0 1 .787.713l.275 5.5a.75.75 0 0 1-1.498.075l-.275-5.5A.75.75 0 0 1 6.05 6Zm3.9 0a.75.75 0 0 1 .712.787l-.275 5.5a.75.75 0 0 1-1.498-.075l.275-5.5A.75.75 0 0 1 9.95 6Z" clipRule="evenodd" />
+                      </svg>
                     </button>
                   </div>
 
@@ -429,6 +472,34 @@ export function RequirementsView({ onSelectWorkflow, onNewWorkflow }: Props) {
                         })}
                       </div>
 
+                      {/* Delete confirmation dialog */}
+                      {confirmDeleteId === w.id && (
+                        <div className="px-4 py-3 border-t border-red-900/30 bg-red-950/20">
+                          <p className="text-xs text-zinc-300 mb-2">
+                            This will permanently archive this requirement{w.issueUrl ? " and its linked PM tool issue" : ""}. This action cannot be undone from the UI.
+                          </p>
+                          {deleteError && confirmDeleteId === w.id && (
+                            <p className="text-xs text-red-400 mb-2">{deleteError}</p>
+                          )}
+                          <div className="flex items-center gap-2 justify-end">
+                            <button
+                              onClick={() => { setConfirmDeleteId(null); setDeleteError(null); }}
+                              disabled={deletingId === w.id}
+                              className="text-[10px] px-2 py-1 rounded border border-zinc-700 text-zinc-400 hover:text-zinc-200 transition-colors disabled:opacity-50"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              onClick={() => handleDelete(w.id)}
+                              disabled={deletingId === w.id}
+                              className="text-[10px] px-2 py-1 rounded bg-red-600/20 text-red-400 border border-red-600/30 hover:bg-red-600/30 transition-colors disabled:opacity-50"
+                            >
+                              {deletingId === w.id ? "Deleting..." : "Confirm Delete"}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
                       {/* Action footer */}
                       <div className="px-4 py-2 border-t border-zinc-800/50 flex items-center justify-between">
                         <div className="flex items-center gap-3 text-[10px] text-zinc-600">
@@ -445,6 +516,16 @@ export function RequirementsView({ onSelectWorkflow, onNewWorkflow }: Props) {
                           )}
                         </div>
                         <div className="flex items-center gap-2">
+                          {confirmDeleteId !== w.id && (
+                            <button
+                              onClick={() => { setConfirmDeleteId(w.id); setDeleteError(null); }}
+                              disabled={deletingId === w.id}
+                              className="text-[10px] px-2 py-1 rounded border border-red-900/30 text-red-400/70 hover:text-red-400 hover:bg-red-950/30 transition-colors disabled:opacity-50"
+                              title="Delete requirement"
+                            >
+                              Delete
+                            </button>
+                          )}
                           {failed && w.taskId && (
                             <button
                               onClick={() => handleRestart(w)}

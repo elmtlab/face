@@ -184,4 +184,26 @@ export class LinearSyncProvider implements PMSyncProvider {
       return { ok: false, error: (e as Error).message };
     }
   }
+
+  async archiveTask(externalId: string): Promise<PMSyncResult> {
+    try {
+      const data = await this.gql(
+        `mutation ArchiveIssue($id: String!) {
+          issueArchive(id: $id) {
+            success
+          }
+        }`,
+        { id: externalId },
+      );
+
+      const result = data.issueArchive;
+      if (!result.success) {
+        return { ok: false, error: "Linear issueArchive returned success=false" };
+      }
+
+      return { ok: true, externalId };
+    } catch (e) {
+      return { ok: false, error: (e as Error).message };
+    }
+  }
 }

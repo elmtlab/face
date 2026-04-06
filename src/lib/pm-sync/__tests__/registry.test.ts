@@ -10,6 +10,7 @@ const mockProvider: PMSyncProvider = {
   createProject: async () => ({ ok: true, externalId: "p1" }),
   createTask: async () => ({ ok: true, externalId: "t1" }),
   updateTask: async () => ({ ok: true }),
+  archiveTask: async () => ({ ok: true }),
 };
 
 describe("PM sync registry", () => {

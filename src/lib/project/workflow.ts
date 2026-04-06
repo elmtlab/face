@@ -21,7 +21,8 @@ export type WorkflowPhase =
   | "approved"
   | "debating"      // 3-agent consensus debate during implementation planning
   | "implementing"
-  | "done";
+  | "done"
+  | "cancelled";    // Soft-deleted / archived
 
 export interface ChatMessage {
   role: "user" | "assistant";
@@ -128,7 +129,7 @@ export function listWorkflows(): WorkflowState[] {
       const id = f.replace(".json", "");
       return loadWorkflow(id);
     })
-    .filter((w): w is WorkflowState => w !== null)
+    .filter((w): w is WorkflowState => w !== null && w.phase !== "cancelled")
     .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
 }
 
@@ -153,6 +154,32 @@ export function createWorkflow(options?: { creatorRole?: string; assignedRoles?:
     createdAt: now,
     updatedAt: now,
   };
+  saveWorkflow(w);
+  return w;
+}
+
+/**
+ * Soft-delete a workflow by marking it as cancelled.
+ * Returns the updated workflow, or null if not found.
+ */
+export function cancelWorkflow(id: string): WorkflowState | null {
+  const w = loadWorkflow(id);
+  if (!w) return null;
+  w.phase = "cancelled";
+  w.updatedAt = new Date().toISOString();
+  saveWorkflow(w);
+  return w;
+}
+
+/**
+ * Restore a cancelled workflow to its previous phase.
+ * Used for rollback when PM tool sync fails.
+ */
+export function restoreWorkflow(id: string, previousPhase: WorkflowPhase): WorkflowState | null {
+  const w = loadWorkflow(id);
+  if (!w || w.phase !== "cancelled") return null;
+  w.phase = previousPhase;
+  w.updatedAt = new Date().toISOString();
   saveWorkflow(w);
   return w;
 }
