@@ -6,6 +6,7 @@ import type { FaceTask } from "./types";
 import { postCompletionComment } from "./github-notify";
 import { createPRForCompletedTask } from "../project/pr-creator";
 import { cleanupWorktree, getWorktreeClonePath } from "../project/repo-manager";
+import { getActiveProvider } from "../project/manager";
 export { describeToolUse } from "./describe-tool";
 import { describeToolUse } from "./describe-tool";
 
@@ -357,11 +358,24 @@ function spawnClaudeCode(task: FaceTask, binaryPath: string): void {
     // Post completion comment to linked GitHub issue (fire-and-forget)
     postCompletionComment(task);
 
-    // Auto-create PR for completed implementation tasks (fire-and-forget)
+    // Auto-create PR for completed implementation tasks.
+    // If PR creation fails and the task has a linked issue on the PR path,
+    // mark the requirement as "failed" so it doesn't stay "in progress" forever.
     if (task.status === "completed") {
-      createPRForCompletedTask(task).catch((err) =>
-        console.error(`[face] PR creation failed for task ${task.id}:`, err),
-      );
+      createPRForCompletedTask(task).catch(async (err) => {
+        console.error(`[face] PR creation failed for task ${task.id}:`, err);
+        if (task.linkedIssue && task.repoInfo) {
+          try {
+            const provider = await getActiveProvider();
+            if (provider) {
+              await provider.updateIssue(String(task.linkedIssue), { status: "failed" });
+              console.log(`[face] Set issue #${task.linkedIssue} status to failed after PR creation failure`);
+            }
+          } catch (statusErr) {
+            console.error(`[face] Failed to update issue #${task.linkedIssue} status to failed:`, statusErr);
+          }
+        }
+      });
     }
 
     // Clean up worktree on failure (PR creator handles cleanup on success)

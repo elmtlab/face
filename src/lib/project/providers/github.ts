@@ -160,7 +160,7 @@ export class GitHubProvider implements ProjectProvider {
   }
 
   private buildColumns(issues: Issue[]): Column[] {
-    const statusOrder: IssueStatus[] = ["backlog", "todo", "in_progress", "in_review", "done", "cancelled"];
+    const statusOrder: IssueStatus[] = ["backlog", "todo", "in_progress", "in_review", "done", "cancelled", "failed"];
     const statusNames: Record<IssueStatus, string> = {
       backlog: "Backlog",
       todo: "To Do",
@@ -168,6 +168,7 @@ export class GitHubProvider implements ProjectProvider {
       in_review: "In Review",
       done: "Done",
       cancelled: "Cancelled",
+      failed: "Failed",
     };
 
     return statusOrder.map((status) => ({

@@ -28,8 +28,11 @@ export async function postCompletionComment(task: FaceTask): Promise<void> {
       `[face] Posted completion comment on issue #${task.linkedIssue} for task ${task.id}`
     );
 
-    // Update issue status when task completed successfully
-    if (task.status === "completed") {
+    // Update issue status when task completed successfully.
+    // Tasks with repoInfo are on the PR workflow path — their requirement
+    // status is deferred to "done" only after the PR is merged (handled by
+    // pr-poller). Setting it here would be premature.
+    if (task.status === "completed" && !task.repoInfo) {
       try {
         await provider.updateIssue(String(task.linkedIssue), { status: "done" });
         console.log(`[face] Updated issue #${task.linkedIssue} status to done`);
