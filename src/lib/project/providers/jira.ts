@@ -35,6 +35,7 @@ function reverseStatus(status: IssueStatus): string {
     case "in_review": return "In Review";
     case "done": return "Done";
     case "cancelled": return "Won't Do";
+    case "failed": return "Won't Do";
     case "backlog": return "Backlog";
   }
 }
@@ -154,7 +155,7 @@ export class JiraProvider implements ProjectProvider {
   }
 
   private buildColumns(issues: Issue[]): Column[] {
-    const statusOrder: IssueStatus[] = ["backlog", "todo", "in_progress", "in_review", "done", "cancelled"];
+    const statusOrder: IssueStatus[] = ["backlog", "todo", "in_progress", "in_review", "done", "cancelled", "failed"];
     const statusNames: Record<IssueStatus, string> = {
       backlog: "Backlog",
       todo: "To Do",
@@ -162,6 +163,7 @@ export class JiraProvider implements ProjectProvider {
       in_review: "In Review",
       done: "Done",
       cancelled: "Cancelled",
+      failed: "Failed",
     };
 
     return statusOrder.map((status) => ({

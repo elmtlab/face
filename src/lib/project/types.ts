@@ -8,7 +8,7 @@
 // ── Core domain types ──────────────────────────────────────────────
 
 export type IssuePriority = "urgent" | "high" | "medium" | "low" | "none";
-export type IssueStatus = "backlog" | "todo" | "in_progress" | "in_review" | "done" | "cancelled";
+export type IssueStatus = "backlog" | "todo" | "in_progress" | "in_review" | "done" | "cancelled" | "failed";
 
 export interface Label {
   id: string;
