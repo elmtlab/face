@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { LoadingSpinner } from "@/components/shared/LoadingSpinner";
 import { ProjectFilterSelect } from "@/components/shared/ProjectFilterSelect";
+import { useProjectContext } from "@/lib/projects/ProjectContext";
 
 interface Column {
   id: string;
@@ -20,6 +21,11 @@ interface BoardIssue {
   priority: string;
 }
 
+interface WorkflowRef {
+  issueId: string | null;
+  projectId: string | null;
+}
+
 interface IssueBoardWidgetProps {
   readOnly?: boolean;
 }
@@ -27,7 +33,25 @@ interface IssueBoardWidgetProps {
 export function IssueBoardWidget({ readOnly }: IssueBoardWidgetProps) {
   const [columns, setColumns] = useState<Column[]>([]);
   const [issues, setIssues] = useState<BoardIssue[]>([]);
+  const [issueProjectMap, setIssueProjectMap] = useState<Map<string, string>>(new Map());
   const [loading, setLoading] = useState(true);
+  const { filterProjectId } = useProjectContext();
+
+  // Build an issue→project mapping from workflows
+  useEffect(() => {
+    fetch("/api/project/workflow")
+      .then((r) => r.json())
+      .then((d) => {
+        const map = new Map<string, string>();
+        for (const w of (d.workflows ?? []) as WorkflowRef[]) {
+          if (w.issueId && w.projectId) {
+            map.set(w.issueId, w.projectId);
+          }
+        }
+        setIssueProjectMap(map);
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     setLoading(true);
@@ -58,6 +82,12 @@ export function IssueBoardWidget({ readOnly }: IssueBoardWidgetProps) {
 
   const issueMap = new Map(issues.map((i) => [i.id, i]));
 
+  // Filter issues by selected project (matching TaskList pattern)
+  const isIssueVisible = (issue: BoardIssue): boolean => {
+    if (filterProjectId === "all") return true;
+    return issueProjectMap.get(issue.id) === filterProjectId;
+  };
+
   return (
     <div>
       <div className="flex items-center justify-end mb-2">
@@ -65,8 +95,9 @@ export function IssueBoardWidget({ readOnly }: IssueBoardWidgetProps) {
       </div>
       <div className={`flex gap-3 overflow-x-auto ${readOnly ? "pointer-events-none" : ""}`}>
         {columns.map((col) => {
-          // Use hydrated issues from the board response if available
-          const colIssues = col.issues ?? col.issueIds.map((id) => issueMap.get(id)).filter(Boolean) as BoardIssue[];
+          // Use hydrated issues from the board response if available, then apply project filter
+          const allColIssues = col.issues ?? col.issueIds.map((id) => issueMap.get(id)).filter(Boolean) as BoardIssue[];
+          const colIssues = allColIssues.filter(isIssueVisible);
           return (
             <div
               key={col.id}
