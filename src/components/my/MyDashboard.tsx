@@ -4,6 +4,8 @@ import { useMemo } from "react";
 import Link from "next/link";
 import { useUsageData } from "@/components/usage/UsageTracker";
 import { getAllPages, type PageInfo } from "@/lib/usage/pages";
+import { TopComponentsWidget } from "@/components/widgets/TopComponentsWidget";
+import { WidgetShell } from "@/components/widgets/WidgetShell";
 
 /**
  * Personalized dashboard that reorders feature cards by usage frequency.
@@ -60,6 +62,14 @@ export function MyDashboard() {
       </header>
 
       <main className="flex-1 overflow-auto p-4 md:p-6">
+        <section className="mb-8">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            <WidgetShell title="Top Components" size="medium">
+              <TopComponentsWidget />
+            </WidgetShell>
+          </div>
+        </section>
+
         {hasUsageData && (
           <section className="mb-8">
             <h2 className="mb-3 text-xs font-medium uppercase tracking-wider text-zinc-500">
