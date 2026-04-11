@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { TaskStatusPanel } from "./TaskStatusPanel";
 import { useRoleSlug } from "@/components/shared/useRoleSlug";
 import { RoleTagBadge } from "@/components/shared/RoleTagBadge";
+import { useProjectContext } from "@/lib/projects/ProjectContext";
 
 // ── Types (mirroring server) ───────────────────────────────────────
 
@@ -143,6 +144,19 @@ export function RequirementWorkflow({ workflowId, onClose, onCreated, activeProj
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const { currentSlug: userRoleSlug } = useRoleSlug();
 
+  // Project selection for new workflows — reuses data from ProjectContext
+  const { activeProjectId: ctxActiveProjectId, projects, loaded: projectsLoaded } = useProjectContext();
+  const effectiveActiveProjectId = activeProjectId ?? ctxActiveProjectId;
+  const isNewWorkflow = !workflowId;
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(effectiveActiveProjectId ?? null);
+
+  // Auto-select when only one project exists and nothing is selected yet
+  useEffect(() => {
+    if (isNewWorkflow && !selectedProjectId && projectsLoaded && projects.length === 1) {
+      setSelectedProjectId(projects[0].id);
+    }
+  }, [isNewWorkflow, selectedProjectId, projectsLoaded, projects]);
+
   // Load existing workflow, or set up a local-only placeholder for new ones.
   // New workflows are only persisted on the first message (see sendMessage).
   useEffect(() => {
@@ -163,7 +177,7 @@ export function RequirementWorkflow({ workflowId, onClose, onCreated, activeProj
         pr: null,
         creatorRole: null,
         assignedRoles: [],
-        projectId: activeProjectId ?? null,
+        projectId: selectedProjectId ?? effectiveActiveProjectId ?? null,
         revisions: [],
         evaluatorAssessment: null,
         consensus: null,
@@ -202,8 +216,10 @@ export function RequirementWorkflow({ workflowId, onClose, onCreated, activeProj
     onCreated();
   }, [workflow?.id, onCreated]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const projectRequired = isNewWorkflow && projectsLoaded && projects.length > 0 && !selectedProjectId;
+
   const sendMessage = async () => {
-    if (!workflow || !input.trim() || loading) return;
+    if (!workflow || !input.trim() || loading || projectRequired) return;
     const messageText = input.trim();
     setLoading(true);
     setError(null);
@@ -230,7 +246,7 @@ export function RequirementWorkflow({ workflowId, onClose, onCreated, activeProj
           body: JSON.stringify({
             creatorRole: userRoleSlug ?? undefined,
             assignedRoles: userRoleSlug ? [userRoleSlug] : [],
-            projectId: activeProjectId ?? undefined,
+            projectId: selectedProjectId ?? effectiveActiveProjectId ?? undefined,
           }),
         });
         const createData = await createRes.json();
@@ -295,6 +311,32 @@ export function RequirementWorkflow({ workflowId, onClose, onCreated, activeProj
       </div>
 
       <PhaseBar current={workflow.phase} />
+
+      {/* Project selector for new workflows */}
+      {isNewWorkflow && projectsLoaded && projects.length > 0 && (
+        <div className="px-4 py-3 border-b border-zinc-800 flex items-center gap-3">
+          <label className="text-xs font-medium text-zinc-400 whitespace-nowrap">
+            Project <span className="text-red-400">*</span>
+          </label>
+          <select
+            value={selectedProjectId ?? ""}
+            onChange={(e) => {
+              const id = e.target.value || null;
+              setSelectedProjectId(id);
+              setWorkflow((w) => w ? { ...w, projectId: id } : null);
+            }}
+            className="flex-1 max-w-xs rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-300 focus:outline-none focus:ring-1 focus:ring-indigo-600"
+          >
+            <option value="" disabled>Select a project…</option>
+            {projects.map((p) => (
+              <option key={p.id} value={p.id}>{p.name}</option>
+            ))}
+          </select>
+          {!selectedProjectId && (
+            <span className="text-xs text-amber-400">Required</span>
+          )}
+        </div>
+      )}
 
       {/* Content area */}
       <div className="flex-1 overflow-y-auto">
@@ -452,17 +494,19 @@ export function RequirementWorkflow({ workflowId, onClose, onCreated, activeProj
                 }
               }}
               placeholder={
-                workflow.messages.length === 0
-                  ? "Describe what you want to build..."
-                  : "Answer the question or add more context..."
+                projectRequired
+                  ? "Select a project above to get started…"
+                  : workflow.messages.length === 0
+                    ? "Describe what you want to build..."
+                    : "Answer the question or add more context..."
               }
               rows={2}
-              disabled={loading}
+              disabled={loading || projectRequired}
               className="flex-1 px-3 py-2 text-sm bg-zinc-900 border border-zinc-700 rounded-md focus:outline-none focus:border-indigo-500 text-zinc-200 placeholder-zinc-500 resize-none disabled:opacity-50"
             />
             <button
               onClick={sendMessage}
-              disabled={loading || !input.trim()}
+              disabled={loading || !input.trim() || projectRequired}
               className="px-4 self-end py-2 text-sm rounded-md bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 transition-colors"
             >
               {loading ? "..." : "Send"}
