@@ -7,7 +7,7 @@ import {
   sanitizeForClient,
   type SetupSessionState,
 } from "@/lib/projects/setup";
-import { createProject, setActiveProjectId, listProjects, getProject, DuplicateProjectError, type Project } from "@/lib/projects/store";
+import { createProject, updateProject, setActiveProjectId, listProjects, getProject, DuplicateProjectError, type Project } from "@/lib/projects/store";
 import { addProvider, getActiveProvider, listProviderConfigs } from "@/lib/project/manager";
 import { scaffoldProject, type ScaffoldResult } from "@/lib/projects/scaffold";
 import { readConfig } from "@/lib/tasks/file-manager";
@@ -460,7 +460,13 @@ function getOrCreateProject(
 ): Project {
   if (session.createdProjectId) {
     const existing = getProject(session.createdProjectId);
-    if (existing) return existing;
+    if (existing) {
+      // Update repoLink if a new value is provided and differs from the stored one
+      if (repoLink && existing.repoLink !== repoLink) {
+        return updateProject(existing.id, { repoLink }) ?? existing;
+      }
+      return existing;
+    }
     // Referenced project was deleted — clear the stale reference and try to
     // adopt an existing project with the same name rather than throwing
     session.createdProjectId = null;
@@ -471,7 +477,13 @@ function getOrCreateProject(
         const match = listProjects().find(
           (p) => p.name.toLowerCase() === name.toLowerCase(),
         );
-        if (match) return match;
+        if (match) {
+          // Update repoLink on adopted project if needed
+          if (repoLink && match.repoLink !== repoLink) {
+            return updateProject(match.id, { repoLink }) ?? match;
+          }
+          return match;
+        }
       }
       throw e;
     }
@@ -511,7 +523,7 @@ async function executeActions(session: SetupSessionState, agentReply: string): P
   const name = (actionData.name as string) ?? "Untitled Project";
   const description = (actionData.description as string) ?? "";
   const goals = (actionData.goals as string) ?? "";
-  const repoLink = (actionData.repoLink as string) ?? "";
+  let repoLink = (actionData.repoLink as string) ?? "";
   const pmTool = (actionData.pmTool as string) ?? "local";
 
   // Update session with extracted info
@@ -533,6 +545,12 @@ async function executeActions(session: SetupSessionState, agentReply: string): P
   if (action === "connect_provider") {
     const scope = (actionData.scope as string) ?? "";
     const credentials = (actionData.credentials as Record<string, string>) ?? {};
+
+    // Derive repoLink from scope for GitHub projects when not explicitly provided
+    if (!repoLink && pmTool === "github" && scope) {
+      repoLink = `https://github.com/${scope}`;
+      session.projectInfo.repoLink = repoLink;
+    }
 
     session.scope = scope;
     session.credentials = credentials;
@@ -664,14 +682,13 @@ async function handleLinkProject(
   const name = (actionData.name as string) ?? "Untitled Project";
   const description = (actionData.description as string) ?? "";
   const goals = (actionData.goals as string) ?? "";
-  const repoLink = (actionData.repoLink as string) ?? "";
+  let repoLink = (actionData.repoLink as string) ?? "";
   const pmTool = (actionData.pmTool as string) ?? "local";
   const existingProviderName = (actionData.existingProviderName as string) ?? "";
 
   session.projectInfo.name = name;
   if (description) session.projectInfo.description = description;
   if (goals) session.projectInfo.goals = goals;
-  if (repoLink) session.projectInfo.repoLink = repoLink;
   session.pmTool = pmTool as "github" | "linear" | "jira" | "local";
 
   const providers = listProviderConfigs();
@@ -682,6 +699,12 @@ async function handleLinkProject(
   if (!matchedProvider) {
     return `Could not find the existing provider connection "${existingProviderName}". Please provide credentials to connect.`;
   }
+
+  // Derive repoLink from the matched provider's scope for GitHub projects when not explicitly provided
+  if (!repoLink && pmTool === "github" && matchedProvider.scope) {
+    repoLink = `https://github.com/${matchedProvider.scope}`;
+  }
+  if (repoLink) session.projectInfo.repoLink = repoLink;
 
   const project = getOrCreateProject(session, name, repoLink);
   setActiveProjectId(project.id);
