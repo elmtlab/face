@@ -142,6 +142,7 @@ export function RequirementWorkflow({ workflowId, onClose, onCreated, activeProj
   const [error, setError] = useState<string | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const prevPhaseRef = useRef<Phase | undefined>(undefined);
   const { currentSlug: userRoleSlug } = useRoleSlug();
 
   // Project selection for new workflows — reuses data from ProjectContext
@@ -196,6 +197,25 @@ export function RequirementWorkflow({ workflowId, onClose, onCreated, activeProj
   useEffect(() => {
     if (workflow && !loading) inputRef.current?.focus();
   }, [workflow, loading]);
+
+  // Auto-trigger story generation when entering planning from gathering.
+  // This handles the case where AI signals [READY_TO_PLAN] in a chat reply.
+  // The "Ready to Plan" button has its own chained handler so this effect
+  // won't double-fire (loading is true during the button flow).
+  useEffect(() => {
+    const prev = prevPhaseRef.current;
+    prevPhaseRef.current = workflow?.phase;
+
+    if (
+      workflow?.phase === "planning" &&
+      prev === "gathering" &&
+      !workflow.generatedStory &&
+      workflow.id &&
+      !loading
+    ) {
+      doAction("generate_story");
+    }
+  }, [workflow?.phase, workflow?.generatedStory, workflow?.id, loading]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Persist workflow "done" state to disk and update local state
   const markDone = useCallback(async () => {
@@ -263,6 +283,42 @@ export function RequirementWorkflow({ workflowId, onClose, onCreated, activeProj
       const data = await res.json();
       if (data.workflow) setWorkflow(data.workflow);
       if (data.error) setError(data.error);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Chain "ready to plan" + "generate story" in a single loading session
+  // so the user only clicks once. Loading stays true throughout both API calls.
+  const handleReadyToPlan = async () => {
+    if (!workflow?.id || loading) return;
+    setLoading(true);
+    setError(null);
+    try {
+      // Step 1: Advance to planning
+      const res1 = await fetch(`/api/project/workflow/${workflow.id}/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "ready_to_plan" }),
+      });
+      const data1 = await res1.json();
+      if (data1.error) {
+        setError(data1.error);
+        return;
+      }
+      if (data1.workflow) setWorkflow(data1.workflow);
+
+      // Step 2: Immediately generate story
+      const res2 = await fetch(`/api/project/workflow/${workflow.id}/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "generate_story" }),
+      });
+      const data2 = await res2.json();
+      if (data2.workflow) setWorkflow(data2.workflow);
+      if (data2.error) setError(data2.error);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -461,7 +517,7 @@ export function RequirementWorkflow({ workflowId, onClose, onCreated, activeProj
           {workflow.phase === "gathering" && workflow.messages.length >= 2 && (
             <div className="flex justify-center mb-3">
               <button
-                onClick={() => doAction("ready_to_plan")}
+                onClick={handleReadyToPlan}
                 disabled={loading}
                 className="px-4 py-2 text-sm rounded-md border border-zinc-600 text-zinc-300 hover:bg-zinc-800 disabled:opacity-50 transition-colors"
               >
@@ -472,13 +528,19 @@ export function RequirementWorkflow({ workflowId, onClose, onCreated, activeProj
 
           {workflow.phase === "planning" && (
             <div className="flex justify-center mb-3">
-              <button
-                onClick={() => doAction("generate_story")}
-                disabled={loading}
-                className="px-4 py-2 text-sm rounded-md bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 transition-colors"
-              >
-                {loading ? "Generating story..." : "Generate Story from Conversation"}
-              </button>
+              {loading ? (
+                <div className="flex items-center gap-2 text-sm text-zinc-400 py-2">
+                  <div className="w-4 h-4 border-2 border-zinc-600 border-t-indigo-500 rounded-full animate-spin" />
+                  Generating story from your conversation...
+                </div>
+              ) : (
+                <button
+                  onClick={() => doAction("generate_story")}
+                  className="px-4 py-2 text-sm rounded-md bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 transition-colors"
+                >
+                  Generate Story from Conversation
+                </button>
+              )}
             </div>
           )}
 
