@@ -39,12 +39,13 @@ vi.mock("fs", async () => {
   };
 });
 
-import { createProject, getProject, listProjects } from "./store";
+import { createProject, updateProject, getProject, listProjects } from "./store";
 
 /**
  * Mirrors the getOrCreateProject helper in the setup chat route.
  * Tests the idempotency pattern: if a session already holds a
  * createdProjectId, return the existing project instead of creating a new one.
+ * Also updates repoLink on existing projects when a new value is provided.
  */
 function getOrCreateProject(
   createdProjectId: string | null,
@@ -53,7 +54,12 @@ function getOrCreateProject(
 ) {
   if (createdProjectId) {
     const existing = getProject(createdProjectId);
-    if (existing) return existing;
+    if (existing) {
+      if (repoLink && existing.repoLink !== repoLink) {
+        return updateProject(existing.id, { repoLink }) ?? existing;
+      }
+      return existing;
+    }
   }
   return createProject(name, repoLink);
 }
@@ -91,5 +97,34 @@ describe("setup idempotency guard", () => {
     const project = getOrCreateProject(deletedId, "New Project", "");
     expect(project.name).toBe("New Project");
     expect(project.id).not.toBe(deletedId);
+  });
+
+  it("updates repoLink on existing project when retried with a new value", () => {
+    const first = createProject("Listener", "");
+    expect(first.repoLink).toBe("");
+
+    // Retry with a derived repoLink — should update the existing project
+    const second = getOrCreateProject(first.id, "Listener", "https://github.com/elmtlab/listener");
+    expect(second.id).toBe(first.id);
+    expect(second.repoLink).toBe("https://github.com/elmtlab/listener");
+    expect(listProjects()).toHaveLength(1);
+  });
+
+  it("does not update repoLink when retried with the same value", () => {
+    const first = createProject("Listener", "https://github.com/elmtlab/listener");
+    const originalUpdatedAt = first.updatedAt;
+
+    const second = getOrCreateProject(first.id, "Listener", "https://github.com/elmtlab/listener");
+    expect(second.id).toBe(first.id);
+    expect(second.repoLink).toBe("https://github.com/elmtlab/listener");
+    expect(second.updatedAt).toBe(originalUpdatedAt);
+  });
+
+  it("does not clear repoLink when retried with an empty value", () => {
+    const first = createProject("Listener", "https://github.com/elmtlab/listener");
+
+    const second = getOrCreateProject(first.id, "Listener", "");
+    expect(second.id).toBe(first.id);
+    expect(second.repoLink).toBe("https://github.com/elmtlab/listener");
   });
 });
