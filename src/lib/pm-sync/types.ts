@@ -49,7 +49,7 @@ export interface PMTaskInput {
   title: string;
   description?: string;
   priority?: "urgent" | "high" | "medium" | "low" | "none";
-  status?: "backlog" | "todo" | "in_progress" | "in_review" | "done" | "cancelled";
+  status?: "backlog" | "todo" | "in_progress" | "in_review" | "done" | "cancelled" | "failed";
   labels?: string[];
 }
 
