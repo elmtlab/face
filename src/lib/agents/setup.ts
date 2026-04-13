@@ -12,6 +12,8 @@ const CLAUDE_SETTINGS_PATH = path.join(
 );
 
 const FACE_HOOK_URL = `${FACE_BASE_URL}/api/hooks/task-update`;
+const FACE_APPROVAL_URL = `${FACE_BASE_URL}/api/hooks/tool-approval`;
+const FACE_UNREVIEWED_URL = `${FACE_BASE_URL}/api/hooks/tool-approval/unreviewed`;
 
 // We tag our hooks with this command prefix so we can find/remove them later
 const FACE_HOOK_TAG = "# face-hook";
@@ -55,7 +57,7 @@ function isFaceHook(entry: ClaudeHookEntry): boolean {
   return (
     entry.hooks?.some(
       (h) =>
-        h.url?.includes("/api/hooks/task-update") ||
+        h.url?.includes("/api/hooks/") ||
         h.command?.includes(FACE_HOOK_TAG)
     ) ?? false
   );
@@ -102,6 +104,60 @@ export async function setupClaudeCode(): Promise<{
         {
           type: "command",
           command: `${FACE_HOOK_TAG}\n[ -n "$FACE_INTERNAL" ] && exit 0\ncurl -s -X POST ${FACE_HOOK_URL} -H 'Content-Type: application/json' -d "$(cat | jq -c '{hook_type: \"PostToolUse\", session_id: .session_id, tool_name: .tool_name, tool_input: .tool_input, tool_result: (.tool_result // "" | tostring | .[0:500])}')" > /dev/null 2>&1 || true`,
+        },
+      ],
+    });
+
+    // --- PreToolUse: intercepts tool calls for human approval ---
+    if (!settings.hooks.PreToolUse) {
+      settings.hooks.PreToolUse = [];
+    }
+    settings.hooks.PreToolUse = settings.hooks.PreToolUse.filter(
+      (h) => !isFaceHook(h)
+    );
+    // The hook script:
+    // 1. Posts tool call details to FACE and waits for a decision (up to 10s connect timeout).
+    // 2. If FACE is unreachable, logs the unreviewed action to a local file and auto-approves.
+    // 3. Returns a JSON decision object that Claude Code reads from stdout.
+    settings.hooks.PreToolUse.push({
+      hooks: [
+        {
+          type: "command",
+          command: [
+            FACE_HOOK_TAG,
+            `[ -n "$FACE_INTERNAL" ] && exit 0`,
+            // Read stdin into a variable
+            `INPUT=$(cat)`,
+            // Build the request payload
+            `PAYLOAD=$(echo "$INPUT" | jq -c '{session_id: .session_id, tool_name: .tool_name, tool_input: .tool_input, cwd: .cwd}')`,
+            // Try to reach FACE server (10s connect timeout, 130s max wait)
+            `RESP=$(curl -s --connect-timeout 10 --max-time 130 -X POST ${FACE_APPROVAL_URL} -H 'Content-Type: application/json' -d "$PAYLOAD" 2>/dev/null)`,
+            `RC=$?`,
+            // If curl failed (server unreachable), log unreviewed and auto-approve
+            `if [ $RC -ne 0 ] || [ -z "$RESP" ]; then`,
+            `  curl -s --connect-timeout 2 -X POST ${FACE_UNREVIEWED_URL} -H 'Content-Type: application/json' -d "$PAYLOAD" > /dev/null 2>&1 || true`,
+            `  FACE_DIR="\${HOME}/.face"`,
+            `  mkdir -p "$FACE_DIR"`,
+            `  echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) AUTO_APPROVED tool=$(echo "$INPUT" | jq -r .tool_name) reason=server_unreachable" >> "$FACE_DIR/unreviewed.log"`,
+            `  echo '{"decision":"approve","reason":"server_unreachable"}'`,
+            `  exit 0`,
+            `fi`,
+            // Parse the decision from the server response
+            `DECISION=$(echo "$RESP" | jq -r '.decision // "approve"')`,
+            `REASON=$(echo "$RESP" | jq -r '.reason // empty')`,
+            // If rejected, exit 2 to block the tool call
+            `if [ "$DECISION" = "reject" ]; then`,
+            `  if [ -n "$REASON" ]; then`,
+            `    echo "{\\\"decision\\\":\\\"block\\\",\\\"reason\\\":\\\"$REASON\\\"}"`,
+            `  else`,
+            `    echo '{"decision":"block","reason":"Rejected by FACE"}'`,
+            `  fi`,
+            `  exit 2`,
+            `fi`,
+            // Approved
+            `echo '{"decision":"approve"}'`,
+            `exit 0`,
+          ].join("\n"),
         },
       ],
     });
