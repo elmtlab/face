@@ -2,6 +2,8 @@
 
 import { TaskList } from "@/components/tasks/TaskList";
 import { TaskSubmit } from "@/components/tasks/TaskSubmit";
+import { ToolApprovalPanel } from "@/components/approvals/ToolApprovalPanel";
+import { UnreviewedActions } from "@/components/approvals/UnreviewedActions";
 import { AdaptiveFeature } from "@/components/shared/AdaptiveFeature";
 import { useUser } from "@/components/user/UserContext";
 import { ROLE_LABELS } from "@/lib/user/types";
@@ -39,6 +41,11 @@ export function AdaptiveShell() {
       </header>
 
       <main className="flex-1 flex flex-col p-3 md:p-4 lg:p-6 overflow-hidden">
+        {/* Pending tool approvals & unreviewed actions */}
+        <div className="mb-4 md:mb-6 space-y-3">
+          <ToolApprovalPanel />
+          <UnreviewedActions />
+        </div>
         {/* Task submission area */}
         <AdaptiveFeature featureId="task-submit" alwaysShow>
           <div className="mb-4 md:mb-6">
