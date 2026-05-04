@@ -14,6 +14,12 @@ interface ChatMessage {
   timestamp: string;
 }
 
+interface QueuedMessage {
+  id: string;
+  content: string;
+  queuedAt: string;
+}
+
 interface GeneratedStory {
   title: string;
   body: string;
@@ -140,9 +146,12 @@ export function RequirementWorkflow({ workflowId, onClose, onCreated, activeProj
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [messageQueue, setMessageQueue] = useState<QueuedMessage[]>([]);
+  const [withdrawnId, setWithdrawnId] = useState<string | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const prevPhaseRef = useRef<Phase | undefined>(undefined);
+  const queueIdCounter = useRef(0);
   const { currentSlug: userRoleSlug } = useRoleSlug();
 
   // Project selection for new workflows — reuses data from ProjectContext
@@ -195,8 +204,8 @@ export function RequirementWorkflow({ workflowId, onClose, onCreated, activeProj
 
   // Focus input
   useEffect(() => {
-    if (workflow && !loading) inputRef.current?.focus();
-  }, [workflow, loading]);
+    if (workflow) inputRef.current?.focus();
+  }, [workflow]);
 
   // Auto-trigger story generation when entering planning from gathering.
   // This handles the case where AI signals [READY_TO_PLAN] in a chat reply.
@@ -238,12 +247,17 @@ export function RequirementWorkflow({ workflowId, onClose, onCreated, activeProj
 
   const projectRequired = isNewWorkflow && projectsLoaded && projects.length > 0 && !selectedProjectId;
 
-  const sendMessage = async () => {
-    if (!workflow || !input.trim() || loading || projectRequired) return;
-    const messageText = input.trim();
+  // Withdraw a queued message before it is sent
+  const withdrawMessage = useCallback((id: string) => {
+    setMessageQueue((q) => q.filter((m) => m.id !== id));
+    setWithdrawnId(id);
+    setTimeout(() => setWithdrawnId((cur) => (cur === id ? null : cur)), 2000);
+  }, []);
+
+  // Core: send a single message to the API (does not touch queue)
+  const processMessage = useCallback(async (messageText: string) => {
     setLoading(true);
     setError(null);
-    setInput("");
 
     // Immediately show user message in chat
     const userMessage: ChatMessage = {
@@ -256,7 +270,7 @@ export function RequirementWorkflow({ workflowId, onClose, onCreated, activeProj
     );
 
     try {
-      let wfId = workflow.id;
+      let wfId = workflow?.id ?? "";
 
       // If this is a brand-new workflow (not yet persisted), create it first
       if (!wfId) {
@@ -288,6 +302,29 @@ export function RequirementWorkflow({ workflowId, onClose, onCreated, activeProj
     } finally {
       setLoading(false);
     }
+  }, [workflow?.id, userRoleSlug, selectedProjectId, effectiveActiveProjectId]);
+
+  // Process the next queued message when AI finishes
+  useEffect(() => {
+    if (loading || messageQueue.length === 0) return;
+    const [next, ...rest] = messageQueue;
+    setMessageQueue(rest);
+    processMessage(next.content);
+  }, [loading, messageQueue, processMessage]);
+
+  const sendMessage = () => {
+    if (!workflow || !input.trim() || projectRequired) return;
+    const messageText = input.trim();
+    setInput("");
+
+    if (loading) {
+      // AI is busy — queue the message
+      const id = `q-${++queueIdCounter.current}-${Date.now()}`;
+      setMessageQueue((q) => [...q, { id, content: messageText, queuedAt: new Date().toISOString() }]);
+      return;
+    }
+
+    processMessage(messageText);
   };
 
   // Chain "ready to plan" + "generate story" in a single loading session
@@ -402,6 +439,8 @@ export function RequirementWorkflow({ workflowId, onClose, onCreated, activeProj
             messages={workflow.messages}
             chatEndRef={chatEndRef}
             loading={loading}
+            queuedMessages={messageQueue}
+            onWithdraw={withdrawMessage}
           />
         )}
 
@@ -544,6 +583,13 @@ export function RequirementWorkflow({ workflowId, onClose, onCreated, activeProj
             </div>
           )}
 
+          {/* Withdrawn confirmation */}
+          {withdrawnId && (
+            <p className="text-xs text-zinc-400 mb-2 bg-zinc-800/50 px-3 py-1.5 rounded">
+              Message withdrawn from queue.
+            </p>
+          )}
+
           <div className="flex gap-2">
             <textarea
               ref={inputRef}
@@ -558,24 +604,26 @@ export function RequirementWorkflow({ workflowId, onClose, onCreated, activeProj
               placeholder={
                 projectRequired
                   ? "Select a project above to get started…"
-                  : workflow.messages.length === 0
-                    ? "Describe what you want to build..."
-                    : "Answer the question or add more context..."
+                  : loading
+                    ? "Type your next message (it will be queued)..."
+                    : workflow.messages.length === 0
+                      ? "Describe what you want to build..."
+                      : "Answer the question or add more context..."
               }
               rows={2}
-              disabled={loading || projectRequired}
+              disabled={projectRequired}
               className="flex-1 px-3 py-2 text-sm bg-zinc-900 border border-zinc-700 rounded-md focus:outline-none focus:border-indigo-500 text-zinc-200 placeholder-zinc-500 resize-none disabled:opacity-50"
             />
             <button
               onClick={sendMessage}
-              disabled={loading || !input.trim() || projectRequired}
+              disabled={!input.trim() || projectRequired}
               className="px-4 self-end py-2 text-sm rounded-md bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 transition-colors"
             >
-              {loading ? "..." : "Send"}
+              {loading ? "Queue" : "Send"}
             </button>
           </div>
           <p className="text-[10px] text-zinc-600 mt-1">
-            Press Enter to send, Shift+Enter for new line
+            {loading ? "AI is thinking — messages will be queued and sent automatically" : "Press Enter to send, Shift+Enter for new line"}
           </p>
         </div>
       )}
@@ -589,10 +637,14 @@ function ChatArea({
   messages,
   chatEndRef,
   loading,
+  queuedMessages = [],
+  onWithdraw,
 }: {
   messages: ChatMessage[];
   chatEndRef: React.RefObject<HTMLDivElement | null>;
   loading?: boolean;
+  queuedMessages?: QueuedMessage[];
+  onWithdraw?: (id: string) => void;
 }) {
   return (
     <div className="p-4 space-y-4">
@@ -647,6 +699,30 @@ function ChatArea({
           </div>
         </div>
       )}
+
+      {/* Queued messages shown inline in chat */}
+      {queuedMessages.map((qm) => (
+        <div key={qm.id} className="flex justify-end">
+          <div className="max-w-[80%] rounded-lg px-4 py-2.5 text-sm bg-indigo-600/10 text-indigo-200 border border-indigo-600/20 border-dashed">
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-[10px] font-medium uppercase tracking-wider text-zinc-500">
+                Queued
+              </span>
+            </div>
+            <p className="whitespace-pre-wrap leading-relaxed opacity-70">
+              {qm.content}
+            </p>
+            {onWithdraw && (
+              <button
+                onClick={() => onWithdraw(qm.id)}
+                className="mt-1.5 text-[10px] px-2 py-0.5 rounded bg-zinc-800 text-zinc-400 hover:bg-red-600/20 hover:text-red-300 transition-colors"
+              >
+                Withdraw
+              </button>
+            )}
+          </div>
+        </div>
+      ))}
 
       <div ref={chatEndRef} />
     </div>
